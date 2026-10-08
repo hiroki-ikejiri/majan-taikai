@@ -1,0 +1,67 @@
+rules_version = '2';
+
+// 麻雀大会スコアの権限ルール
+//   主催者 … Google ログイン。自分の大会の設定・卓割り・場代・結果の修正ができる
+//   参加者 … 匿名ログイン（画面上はログイン操作なし）。結果の新規入力とチップ入力だけできる
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isGoogle() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+
+    function tournament(tid) {
+      return get(/databases/$(database)/documents/tournaments/$(tid)).data;
+    }
+
+    function isOwner(tid) {
+      return isGoogle() && tournament(tid).ownerUid == request.auth.uid;
+    }
+
+    function isOpen(tid) {
+      return tournament(tid).status != 'settled';
+    }
+
+    match /tournaments/{tid} {
+      // 大会 ID を知っている人（共有 URL を受け取った人）だけが読める
+      allow get: if signedIn();
+      allow list: if isGoogle() && resource.data.ownerUid == request.auth.uid;
+
+      allow create: if isGoogle()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.players.size() % 4 == 0;
+      allow update: if isGoogle()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isGoogle() && resource.data.ownerUid == request.auth.uid;
+
+      // 結果。参加者は「まだ無い卓」だけ作れる（二重入力の防止）。修正・削除は主催者だけ
+      match /results/{rid} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && (isOpen(tid) || isOwner(tid))
+          && rid == string(request.resource.data.round) + '-' + request.resource.data.table
+          && request.resource.data.seats.size() == 4
+          && request.resource.data.seats[0].score + request.resource.data.seats[1].score
+             + request.resource.data.seats[2].score + request.resource.data.seats[3].score
+             == tournament(tid).rules.startPoints * 4;
+        allow update, delete: if isOwner(tid);
+      }
+
+      // チップ枚数。精算確定までは参加者も入力できる
+      match /chips/{pid} {
+        allow read: if signedIn();
+        allow write: if signedIn() && (isOpen(tid) || isOwner(tid));
+      }
+    }
+
+    // 主催者ごとの過去参加者リスト
+    match /organizers/{uid} {
+      allow read, write: if isGoogle() && request.auth.uid == uid;
+    }
+  }
+}
