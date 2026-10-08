@@ -1,0 +1,16 @@
+{
+  "name": "majan-taikai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "麻雀大会のスコア入力・集計 Web アプリ",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:all": "npm test && npm run test:e2e",
+    "start": "python3 -m http.server 5173 --directory public"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
