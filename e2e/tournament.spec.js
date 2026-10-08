@@ -1,5 +1,5 @@
 // 大会の流れを画面から通して確かめる E2E テスト（デモモード）
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 import { buildTournament, resultsFor, seed, fillScores, NAMES8 } from './helpers.js';
 
 test.describe('大会作成', () => {

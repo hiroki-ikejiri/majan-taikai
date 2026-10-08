@@ -30,7 +30,7 @@
 | データ・ログイン | Firebase（Firestore・Authentication）。権限は `firestore.rules` |
 | 公開 | Cloudflare Pages。`main` への push で GitHub Actions が自動デプロイ |
 
-Firebase の設定（`public/js/config.js`）が空のときは **デモモード** で動きます。データはそのブラウザの中だけに保存されるので、画面の確認やテストに使えます。
+URL に `?demo` を付けると **デモモード** で動きます（例 `http://localhost:5173/?demo`）。データはそのブラウザの中だけに保存されるので、本番のデータに触らずに画面を確認できます。E2E テストも必ずデモモードで動きます。`public/js/config.js` を `null` にした場合もデモモードになります。
 
 ```
 public/
@@ -50,13 +50,13 @@ docs/SETUP.md         本番セットアップ手順
 
 ## 開発
 
-手元で動かす（デモモード）。
+手元で動かす。
 
 ```bash
 npm start
 ```
 
-ブラウザで `http://localhost:5173/` を開きます。
+ブラウザで `http://localhost:5173/?demo` を開きます（`?demo` を外すと本番の Firebase につながります）。
 
 テストを実行する。
 

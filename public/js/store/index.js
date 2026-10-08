@@ -18,8 +18,18 @@
 //   addPastPlayers(uid, names)
 import { firebaseConfig } from '../config.js';
 
+// URL に ?demo を付けるか、localStorage に majan-force-demo=1 があればデモモードにする
+// （手元での画面確認と E2E テスト用。本番データには触らない）
+function forceDemo() {
+  try {
+    return new URLSearchParams(location.search).has('demo') || localStorage.getItem('majan-force-demo') === '1';
+  } catch {
+    return false;
+  }
+}
+
 export async function loadStore() {
-  if (firebaseConfig) {
+  if (firebaseConfig && !forceDemo()) {
     const mod = await import('./firebase.js');
     return mod.createFirebaseStore(firebaseConfig);
   }
