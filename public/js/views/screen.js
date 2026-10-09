@@ -1,9 +1,11 @@
 // 会場表示。会場のモニターに出しっぱなしにする画面
-// （今の回戦・残り時間・各卓の状態・参加用 QR コード・ポイントランキング）
+// （今の回戦・残り時間・各卓の状態・参加用 QR コード・ポイントランキング）。
+// スクロールしなくても全員の順位が入るように、画面の高さに合わせて文字の大きさを変える
 import { h, fmtPt, ptClass, qrCode } from '../ui.js';
 import { shareUrlOf } from './organizer.js';
 import { statusBadge } from './resultEditor.js';
 import { timerDisplay, enableSound, isSoundEnabled } from './timerView.js';
+import { timerControls } from './admin.js';
 
 const FINAL_LINE = 4;
 
@@ -14,6 +16,7 @@ export function renderScreen(ctx) {
   const t = state.t;
   const d = state.d;
   const r = d.currentRound;
+  const isOwner = state.user?.isOrganizer && state.user.uid === t.ownerUid;
 
   // 今の回戦の見出し
   const roundLabel = d.allDone
@@ -39,27 +42,27 @@ export function renderScreen(ctx) {
       )
     : null;
 
-  // ポイントランキング。人数が多いときは、左の列に上半分、右の列に下半分を並べる
-  const showLine = d.rules.hasFinal && !d.prelimDone && d.players.length > FINAL_LINE;
-  const rankRow = (row) =>
+  // ポイントランキング。人数に合わせて 1〜3 列にし、左の列から上位を並べる。
+  // 1 列の行数（--rows）から文字の大きさを決めて、画面の高さにぴったり収める
+  const n = d.standings.length;
+  const cols = n > 24 ? 3 : n > 12 ? 2 : 1;
+  const perCol = Math.ceil(n / cols);
+  const showLine = d.rules.hasFinal && !d.prelimDone && n > FINAL_LINE;
+  const rankRow = (row, index) =>
     h(
       'div',
-      { class: 'screen-rank-row' },
+      { class: `screen-rank-row ${showLine && index === FINAL_LINE - 1 ? 'line-after' : ''}` },
       h('span', { class: `rank-badge r${row.rank}` }, row.rank),
       h('span', { class: 'screen-rank-name' }, row.name),
       h('span', { class: `screen-rank-total ${ptClass(row.total)}` }, fmtPt(row.total)),
     );
-  const column = (list, offset) =>
-    h(
-      'div',
-      { class: 'screen-rank-col' },
-      list.flatMap((row, i) => [rankRow(row), showLine && offset + i === FINAL_LINE - 1 ? h('div', { class: 'final-line' }, '▲ 決勝 A 卓 ▲') : null]),
-    );
-  const twoColumns = d.standings.length > 12;
-  const half = Math.ceil(d.standings.length / 2);
-  const rankList = twoColumns
-    ? h('div', { class: 'screen-rank-list two' }, column(d.standings.slice(0, half), 0), column(d.standings.slice(half), half))
-    : h('div', { class: 'screen-rank-list' }, column(d.standings, 0));
+  const rankList = h(
+    'div',
+    { class: 'screen-rank-list', style: `--cols: ${cols}; --rows: ${perCol}` },
+    Array.from({ length: cols }, (_, c) =>
+      h('div', { class: 'screen-rank-col' }, d.standings.slice(c * perCol, (c + 1) * perCol).map((row, i) => rankRow(row, c * perCol + i))),
+    ),
+  );
 
   const url = shareUrlOf(t.id);
   const soundBtn = h(
@@ -88,7 +91,7 @@ export function renderScreen(ctx) {
         { class: 'row' },
         soundBtn,
         h('button', { class: 'btn small', onClick: () => document.documentElement.requestFullscreen?.() }, '全画面'),
-        h('a', { class: 'btn small', href: `#/t/${t.id}/admin` }, '主催者メニューへ'),
+        isOwner && h('a', { class: 'btn small', href: `#/t/${t.id}/admin` }, '主催者メニューへ'),
       ),
     ),
     h(
@@ -97,16 +100,22 @@ export function renderScreen(ctx) {
       h(
         'section',
         { class: 'screen-main' },
-        h('div', { class: 'screen-round' }, roundLabel),
-        !d.allDone && timerDisplay('big'),
+        h(
+          'div',
+          { class: 'screen-top' },
+          h(
+            'div',
+            { class: 'screen-clock' },
+            h('div', { class: 'screen-round' }, roundLabel),
+            !d.allDone && timerDisplay('big'),
+            // タイマーの操作は主催者がログインしているときだけ出す
+            isOwner && timerControls(ctx, { big: true }),
+          ),
+          h('div', { class: 'screen-qr' }, qrCode(url), h('div', { class: 'screen-qr-text' }, 'スマホで読み取って参加')),
+        ),
         tableBox,
       ),
-      h(
-        'section',
-        { class: 'screen-side' },
-        h('div', { class: 'screen-qr' }, qrCode(url), h('div', { class: 'screen-qr-text' }, 'スマホで読み取って参加')),
-        h('div', { class: 'screen-rank' }, h('h2', {}, 'ポイントランキング'), rankList),
-      ),
+      h('section', { class: 'screen-side' }, h('h2', {}, 'ポイントランキング'), rankList),
     ),
   );
 }

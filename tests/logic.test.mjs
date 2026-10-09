@@ -221,3 +221,9 @@ test('「空白も区切りにする」なら 2 語でも分ける', async () =>
   assert.deepEqual(parseNames('田中 加藤', { splitOnSpace: true }), ['田中', '加藤']);
   assert.deepEqual(parseNames('a b、c', { splitOnSpace: true }), ['a', 'b', 'c']);
 });
+
+test('名前は数字を数として並べる（ゲスト2 → ゲスト10）', async () => {
+  const { compareNames } = await import('../public/js/logic/names.js');
+  const names = ['ゲスト10', 'ゲスト2', 'ゲスト1', 'ゲスト20', '池尻', 'ゲスト3'];
+  assert.deepEqual([...names].sort(compareNames).filter((n) => n.startsWith('ゲスト')), ['ゲスト1', 'ゲスト2', 'ゲスト3', 'ゲスト10', 'ゲスト20']);
+});

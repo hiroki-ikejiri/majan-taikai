@@ -97,3 +97,6 @@ export function parseNames(text, { splitOnSpace = false } = {}) {
     });
   return cleanNames(pieces);
 }
+
+// 名前の並べ替え。数字は数として比べる（ゲスト2 → ゲスト10 の順。文字として比べると ゲスト10 が先に来てしまう）
+export const compareNames = (a, b) => a.localeCompare(b, 'ja', { numeric: true });
