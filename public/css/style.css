@@ -158,8 +158,6 @@ textarea.input { resize: vertical; }
 .field > span { font-size: 14px; color: var(--muted); }
 .field.inline { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
 .field.inline input[type='checkbox'] { width: 24px; height: 24px; }
-.uma-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.uma-row .input.num { width: 100%; }
 
 /* チップ風の選択ボタン */
 .chip-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
@@ -559,3 +557,4 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 12px; font-
 }
 .tl-rank { display: inline-block; min-width: 2.4em; color: var(--muted); font-weight: 700; }
 .table-line .tl-score { min-width: 3em; text-align: right; }
+.small-note { font-size: 13px; margin: 0 0 8px; }
