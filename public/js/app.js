@@ -25,7 +25,7 @@ const state = {
   me: null,
   drafts: {},
   inputSel: null,
-  rankMode: 'rank',
+  rankMode: null, // null のときは、全回戦が終わっていれば「最終結果」、それまでは「ポイント」を開く
   openRow: null,
   chipDraft: null,
   adminEdit: null,

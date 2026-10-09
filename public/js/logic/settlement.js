@@ -1,4 +1,11 @@
 // 最終精算。収支 = 合計ポイント × レート ＋ チップ枚数 × 単価 − 場代の割り勘
+// （場代を事前に徴収済みの大会では、場代は精算に含めない）
+
+// 場代を事前に徴収済みか
+export const isFeePrepaid = (rules) => rules.feeMode === 'prepaid';
+
+// 精算に必要な場代の情報がそろっているか（事前徴収なら不要）
+export const feeReady = (rules, totalFee) => isFeePrepaid(rules) || Number.isFinite(totalFee);
 
 // 1 人あたりの場代。指定単位で切り上げる
 export function feePerPerson(totalFee, playerCount, roundUnit = 100) {
@@ -16,7 +23,7 @@ export function chipStatus(players, chips) {
 
 // 一人ずつの精算額を計算する。standings は computeStandings の戻り値
 export function computeSettlement(standings, chips, rules, totalFee) {
-  const fee = feePerPerson(totalFee, standings.length, rules.feeRoundUnit);
+  const fee = isFeePrepaid(rules) ? 0 : feePerPerson(totalFee, standings.length, rules.feeRoundUnit);
   return standings.map((row) => {
     const chipCount = Number.isFinite(chips[row.id]) ? chips[row.id] : 0;
     const pointYen = row.total * rules.rate;

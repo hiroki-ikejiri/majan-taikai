@@ -341,6 +341,34 @@ function stepNames(w, go, ctx) {
   return section;
 }
 
+const RATE_PRESETS = [
+  ['50円（点5）', 50],
+  ['100円（点10）', 100],
+];
+
+// 場代の扱いの切り替え。onSelect(mode) で 'split'（精算で割り勘）か 'prepaid'（事前徴収済み）を受け取る
+export function feeModeSwitch(rules, onSelect) {
+  const mode = rules.feeMode === 'prepaid' ? 'prepaid' : 'split';
+  return h(
+    'div',
+    { class: 'segmented fee-mode' },
+    [
+      ['split', '精算で割り勘'],
+      ['prepaid', '事前に徴収済み'],
+    ].map(([value, label]) =>
+      h('button', {
+        type: 'button',
+        class: mode === value ? 'on' : '',
+        onClick: (e) => {
+          e.currentTarget.parentElement.querySelectorAll('button').forEach((b) => b.classList.remove('on'));
+          e.currentTarget.classList.add('on');
+          onSelect(value);
+        },
+      }, label),
+    ),
+  );
+}
+
 // 数値ルールとルール文の編集欄（大会作成と主催者画面で共用）
 export function rulesEditor(rules, sections, { onChange } = {}) {
   const num = (label, key, opts = {}) =>
@@ -360,6 +388,17 @@ export function rulesEditor(rules, sections, { onChange } = {}) {
         },
       }),
     );
+  const rateInput = h('input', {
+    class: 'input num',
+    type: 'number',
+    inputmode: 'numeric',
+    value: rules.rate,
+    'aria-label': 'レート（円）',
+    onInput: (e) => {
+      rules.rate = Number(e.target.value);
+      onChange?.();
+    },
+  });
   const umaInputs = rules.uma.map((v, i) =>
     h('input', {
       class: 'input num',
@@ -423,8 +462,20 @@ export function rulesEditor(rules, sections, { onChange } = {}) {
     h('label', { class: 'field inline' }, h('span', {}, '最終回は成績順の決勝卓'),
       h('input', { type: 'checkbox', checked: rules.hasFinal, onChange: (e) => { rules.hasFinal = e.target.checked; onChange?.(); } })),
     h('h3', {}, 'お金'),
-    num('1pt あたり（円）', 'rate'),
+    h('div', { class: 'field' }, h('span', {}, 'レート（1000 点 = 1pt あたりの金額）'),
+      h('div', { class: 'chip-grid' }, RATE_PRESETS.map(([label, yen]) =>
+        h('button', { class: `chip ${rules.rate === yen ? 'on' : ''}`, onClick: (e) => {
+          rules.rate = yen;
+          rateInput.value = yen;
+          e.currentTarget.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+          e.currentTarget.classList.add('on');
+          onChange?.();
+        } }, label),
+      )),
+    ),
+    h('label', { class: 'field inline' }, h('span', {}, 'その他のレート（円）'), rateInput),
     num('チップ 1 枚（円）', 'chipUnit'),
+    h('div', { class: 'field' }, h('span', {}, '場代の扱い'), feeModeSwitch(rules, (mode) => { rules.feeMode = mode; onChange?.(); })),
     num('場代の切り上げ単位（円）', 'feeRoundUnit'),
     h('h3', {}, 'ルール文'),
     h('p', { class: 'muted' }, '参加者の「ルール」画面にそのまま表示されます'),
@@ -487,7 +538,8 @@ function stepConfirm(w, go, ctx, store, state) {
       h('dt', {}, '回戦'), h('dd', {}, w.rules.hasFinal ? `予選 ${prelim} 回 ＋ 決勝 1 回` : `${prelim} 回`),
       h('dt', {}, '点数'), h('dd', {}, `${w.rules.startPoints.toLocaleString()} 点持ち ${w.rules.returnPoints.toLocaleString()} 点返し`),
       h('dt', {}, 'ウマ・オカ'), h('dd', {}, `${w.rules.uma.join(' / ')}・オカ +${okaOf(w.rules)}`),
-      h('dt', {}, 'お金'), h('dd', {}, `1pt ${w.rules.rate} 円・チップ ${w.rules.chipUnit} 円`),
+      h('dt', {}, 'お金'), h('dd', {}, `1000 点 ${w.rules.rate} 円・チップ ${w.rules.chipUnit} 円`),
+      h('dt', {}, '場代'), h('dd', {}, w.rules.feeMode === 'prepaid' ? '事前に徴収済み' : '精算で割り勘'),
     ),
     h('p', { class: 'muted' }, '予選の卓割りは、同じ人となるべく当たらないように自動で作ります。'),
   );

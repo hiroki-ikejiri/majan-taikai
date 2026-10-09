@@ -1,8 +1,8 @@
 // 参加者の画面（名前選び・ホーム・結果入力・順位・精算・ルール）
 import { h, fmtPt, ptClass, fmtScore, fmtYen, toast } from '../ui.js';
 import { okaOf } from '../logic/scoring.js';
-import { finalLineGap } from '../logic/standings.js';
-import { chipStatus, computeSettlement, feePerPerson } from '../logic/settlement.js';
+import { finalLineGap, placeLabel } from '../logic/standings.js';
+import { chipStatus, computeSettlement, feePerPerson, feeReady, isFeePrepaid } from '../logic/settlement.js';
 import { resultIdOf } from '../store/index.js';
 import { scoreForm, newDraft } from './scoreForm.js';
 
@@ -98,12 +98,17 @@ function renderHome(ctx, me) {
 
   // 今の回戦の卓
   if (d.allDone) {
+    const myFinal = d.finalResult?.find((r) => r.playerId === me);
     wrap.append(
       h(
         'section',
         { class: 'card hero done' },
-        h('div', { class: 'hero-sub' }, '全回戦 終了'),
-        h('div', { class: 'hero-main' }, 'おつかれさま！'),
+        h('div', { class: 'hero-sub' }, '全回戦 終了 ・ 最終結果'),
+        myFinal
+          ? h('div', { class: 'hero-main' }, 'あなたは ', h('span', { class: `table-label place p${myFinal.place}` }, placeLabel(myFinal.place)))
+          : h('div', { class: 'hero-main' }, 'おつかれさま！'),
+        row && h('p', { class: 'muted center' }, `ポイントランキングは ${row.rank} 位（${fmtPt(row.total)}）`),
+        h('a', { class: 'btn big', href: `#/t/${t.id}/rank` }, '最終結果・ポイントを見る'),
         h('a', { class: 'btn primary big', href: `#/t/${t.id}/settle` }, 'チップ入力・精算へ'),
       ),
     );
@@ -140,8 +145,8 @@ function renderHome(ctx, me) {
     );
   }
 
-  // 自分の成績（1 回戦の結果が出るまでは出さない）
-  if (row && row.games > 0) {
+  // 自分の成績（1 回戦の結果が出るまでと、全回戦が終わって最終結果を出しているときは出さない）
+  if (row && row.games > 0 && !d.allDone) {
     const gap = d.rules.hasFinal && !d.prelimDone ? finalLineGap(d.standings, me, FINAL_LINE) : null;
     wrap.append(
       h(
@@ -325,11 +330,12 @@ export function resultTable(d, res) {
 function renderRank(ctx, me) {
   const { state } = ctx;
   const d = state.d;
-  const mode = state.rankMode || 'rank';
+  const modes = d.finalResult ? ['final', 'rank', 'tables'] : ['rank', 'tables'];
+  const mode = modes.includes(state.rankMode) ? state.rankMode : modes[0];
   const seg = h(
     'div',
     { class: 'segmented' },
-    ['rank', 'tables'].map((m) =>
+    modes.map((m) =>
       h(
         'button',
         {
@@ -339,12 +345,13 @@ function renderRank(ctx, me) {
             ctx.rerender();
           },
         },
-        m === 'rank' ? '順位' : '卓割り',
+        { final: '最終結果', rank: 'ポイント', tables: '卓割り' }[m],
       ),
     ),
   );
 
   if (mode === 'tables') return h('div', {}, seg, renderTables(d, me));
+  if (mode === 'final') return h('div', {}, seg, renderFinalResult(d, me));
 
   const showLine = d.rules.hasFinal && d.players.length > FINAL_LINE;
   const list = h('div', { class: 'rank-list' });
@@ -386,6 +393,34 @@ function renderRank(ctx, me) {
     {},
     seg,
     h('section', { class: 'card flush' }, h('div', { class: 'rank-head muted' }, h('span', {}, '順位'), h('span', {}, '名前'), h('span', {}, '合計'), h('span', {}, 'トップ差')), list),
+  );
+}
+
+// 最終結果。決勝卓の着順で決まる大会の順位と、ポイントランキングの順位を並べて見せる
+function renderFinalResult(d, me) {
+  const pointRank = new Map(d.standings.map((s) => [s.id, s]));
+  const list = h('div', { class: 'rank-list' });
+  d.finalResult.forEach((r, i) => {
+    const st = pointRank.get(r.playerId);
+    if (d.rules.hasFinal && i > 0 && i % 4 === 0) list.append(h('div', { class: 'table-divider' }, `${r.table}卓`));
+    list.append(
+      h(
+        'div',
+        { class: `rank-row final-row ${r.playerId === me ? 'me' : ''}` },
+        h('span', { class: `rank-badge r${r.place}` }, r.place),
+        h('span', { class: 'rank-name' }, d.nameOf(r.playerId), h('small', { class: 'muted place-label' }, ` ${placeLabel(r.place)}`)),
+        h('span', { class: `rank-total ${ptClass(st?.total || 0)}` }, fmtPt(st?.total || 0)),
+        h('span', { class: 'rank-diff muted' }, st ? `${st.rank}位` : ''),
+      ),
+    );
+  });
+  return h(
+    'section',
+    { class: 'card flush' },
+    d.rules.hasFinal && h('p', { class: 'muted final-note' }, '決勝の A 卓の 1 着が優勝、2 着が準優勝…、B 卓の 1 着が 5 位…です。お金の精算はポイントで計算します。'),
+    h('div', { class: 'rank-head muted' }, h('span', {}, '順位'), h('span', {}, '名前'), h('span', {}, '合計pt'), h('span', {}, 'pt順位')),
+    d.rules.hasFinal && h('div', { class: 'table-divider' }, `${d.finalResult[0]?.table || 'A'}卓`),
+    list,
   );
 }
 
@@ -496,8 +531,7 @@ function renderSettle(ctx, me) {
   );
 
   // 精算結果
-  const feeSet = Number.isFinite(t.venueFee);
-  if (!feeSet) {
+  if (!feeReady(d.rules, t.venueFee)) {
     wrap.append(h('section', { class: 'card' }, h('p', { class: 'muted' }, '主催者の場代入力を待っています。')));
     return wrap;
   }
@@ -530,14 +564,20 @@ function renderSettle(ctx, me) {
         ),
       ),
       !status.ready && h('p', { class: 'muted' }, 'チップが全員分そろって合計 0 枚になると確定します。'),
-      h('p', { class: 'muted' }, `場代 ${t.venueFee.toLocaleString()} 円 ÷ ${d.players.length} 人 → 1 人 ${feePerPerson(t.venueFee, d.players.length, d.rules.feeRoundUnit).toLocaleString()} 円`),
+      h(
+        'p',
+        { class: 'muted' },
+        isFeePrepaid(d.rules)
+          ? '場代は事前に徴収済みのため、精算には含めていません'
+          : `場代 ${t.venueFee.toLocaleString()} 円 ÷ ${d.players.length} 人 → 1 人 ${feePerPerson(t.venueFee, d.players.length, d.rules.feeRoundUnit).toLocaleString()} 円`,
+      ),
       mine &&
         h(
           'div',
           { class: `my-amount ${mine.amount >= 0 ? 'plus' : 'minus'}` },
           h('span', {}, mine.amount >= 0 ? 'あなたの受け取り' : 'あなたの支払い'),
           h('strong', {}, hidden ? '＊＊＊' : `${Math.abs(mine.amount).toLocaleString()}円`),
-          h('small', {}, hidden ? '' : `pt ${fmtYen(mine.pointYen)} ／ チップ ${fmtYen(mine.chipYen)} ／ 場代 −${mine.fee.toLocaleString()}円`),
+          h('small', {}, hidden ? '' : `pt ${fmtYen(mine.pointYen)} ／ チップ ${fmtYen(mine.chipYen)}${mine.fee ? ` ／ 場代 −${mine.fee.toLocaleString()}円` : ''}`),
         ),
       h(
         'table',
@@ -579,7 +619,8 @@ function renderRules(ctx) {
         h('li', {}, `ウマ ${r.uma.map(fmtPt).join(' / ')}、オカ +${okaOf(r)}`),
         h('li', {}, '同点は起家に近い方が上'),
         h('li', {}, r.hasFinal ? `予選 ${r.rounds - 1} 回 ＋ 決勝 1 回（決勝は成績順の卓）` : `${r.rounds} 回戦`),
-        h('li', {}, `1pt ${r.rate} 円、チップ 1 枚 ${r.chipUnit} 円、場代は人数で割り勘`),
+        h('li', {}, `1000 点（1pt）${r.rate} 円、チップ 1 枚 ${r.chipUnit} 円`),
+        h('li', {}, isFeePrepaid(r) ? '場代は事前に徴収済み（精算には含めません）' : '場代は精算時に人数で割り勘'),
       ),
     ),
     (t.ruleSections || []).map((s) =>
