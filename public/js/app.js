@@ -31,6 +31,7 @@ const state = {
   rankMode: null, // null のときは、全回戦が終わっていれば「最終結果」、それまでは「ポイント」を開く
   openRow: null,
   chipDraft: null,
+  chipEditOpen: false, // 精算画面で、そろったあとに自分のチップを直しているところか
   adminEdit: null,
 };
 
@@ -158,6 +159,7 @@ setInterval(() => tickTimers(state), 1000);
 // 画面（タブ）が変わったら一番上から表示する
 window.addEventListener('hashchange', () => {
   state.chipDraft = null;
+  state.chipEditOpen = false;
   render();
   window.scrollTo(0, 0);
 });
