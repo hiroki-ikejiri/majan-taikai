@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>麻雀大会スコア 使い方</title>
+<!-- この説明書は scripts/manual/shoot.mjs で PDF にする（node scripts/manual/shoot.mjs --pdf-only） -->
+<style>
+  :root {
+    --text: #1f2a24;
+    --muted: #5f6b65;
+    --line: #dfe5e1;
+    --accent: #15803d;
+    --accent-soft: #e8f6ec;
+    --blue: #1d4ed8;
+    --blue-soft: #e7eefc;
+    --orange: #c2410c;
+    --orange-soft: #fdf0e6;
+    --red: #b91c1c;
+    --red-soft: #fdecec;
+    --gray-soft: #f2f4f3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--text); font-family: 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic', sans-serif; font-size: 10.5pt; line-height: 1.75; }
+  h1, h2, h3 { line-height: 1.4; }
+  p { margin: 0 0 8px; }
+  code { background: var(--gray-soft); border-radius: 4px; padding: 1px 6px; font-family: Menlo, monospace; font-size: 0.92em; }
+  pre { background: #1e1e1e; color: #f1f1f1; border-radius: 8px; padding: 10px 14px; font-family: Menlo, monospace; font-size: 9.5pt; white-space: pre-wrap; }
+
+  /* 表紙 */
+  .cover { height: 250mm; display: flex; flex-direction: column; justify-content: center; page-break-after: always; }
+  .cover .label { color: var(--accent); font-weight: 800; letter-spacing: 0.1em; }
+  .cover h1 { font-size: 34pt; margin: 6px 0 12px; }
+  .cover .lead { font-size: 13pt; color: var(--muted); margin-bottom: 24px; }
+  .cover .url { font-size: 14pt; font-weight: 700; background: var(--accent-soft); border-radius: 10px; padding: 14px 18px; display: inline-block; }
+  .toc { margin-top: 28px; border-top: 2px solid var(--line); padding-top: 14px; }
+  .toc ol { margin: 0; padding-left: 1.4em; font-size: 12pt; }
+  .toc li { margin: 4px 0; }
+
+  /* 章 */
+  .chapter { page-break-before: always; }
+  .chapter-title { font-size: 20pt; margin: 0 0 6px; padding: 6px 0 6px 14px; border-left: 8px solid var(--accent); }
+  .chapter-title small { display: block; font-size: 10pt; color: var(--muted); font-weight: 600; }
+  .chapter-lead { color: var(--muted); margin: 0 0 16px; }
+
+  /* 手順（キャプチャと説明を横に並べる） */
+  .step { display: grid; grid-template-columns: 52mm 1fr; gap: 18px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); page-break-inside: avoid; }
+  /* スマホのキャプチャは画面 1 枚分の高さまで。長いものは上（または下）だけを見せる */
+  .shot { max-height: 112mm; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; }
+  .shot img { display: block; border: none !important; border-radius: 0 !important; }
+  .shot.bottom { height: 112mm; display: flex; flex-direction: column; justify-content: flex-end; }
+  .step.wide { grid-template-columns: 1fr; }
+  .step img { width: 100%; border: 1px solid var(--line); border-radius: 10px; }
+  .step.wide img { max-height: 120mm; object-fit: contain; object-position: left top; }
+  .step h3 { margin: 0 0 8px; font-size: 13pt; display: flex; align-items: center; gap: 8px; }
+  .num { flex: none; display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11pt; align-items: center; justify-content: center; }
+  .step ol, .step ul { margin: 0 0 8px; padding-left: 1.3em; }
+  .step li { margin: 3px 0; }
+
+  /* 色つきのラベル */
+  .note { border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+  .note .badge { display: inline-block; font-size: 9pt; font-weight: 800; border-radius: 999px; padding: 1px 10px; margin-bottom: 4px; color: #fff; }
+  .note.point { background: var(--blue-soft); }
+  .note.point .badge { background: var(--blue); }
+  .note.caution { background: var(--orange-soft); }
+  .note.caution .badge { background: var(--orange); }
+  .note.tip { background: var(--accent-soft); }
+  .note.tip .badge { background: var(--accent); }
+
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--gray-soft); }
+
+  /* よくある質問 */
+  .qa { page-break-inside: avoid; margin-bottom: 12px; }
+  .qa .q { background: var(--accent); color: #fff; font-weight: 800; border-radius: 8px 8px 0 0; padding: 7px 12px; }
+  .qa .a { border: 1px solid var(--line); border-top: none; border-radius: 0 0 8px 8px; padding: 9px 12px; }
+</style>
+</head>
+<body>
+
+<!-- ===== 表紙 ===== -->
+<section class="cover">
+  <div class="label">MAHJONG TOURNAMENT SCORE</div>
+  <h1>麻雀大会スコア<br />使い方ガイド</h1>
+  <p class="lead">点数の入力・ポイントの計算・順位・残り時間・精算までを、<br />スマホで済ませるための Web アプリです。</p>
+  <div class="url">https://majan-taikai.pages.dev/</div>
+  <div class="toc">
+    <ol>
+      <li>このアプリでできること</li>
+      <li>主催者　大会を作る</li>
+      <li>主催者　大会当日の進め方</li>
+      <li>参加者　参加する</li>
+      <li>参加者　結果を入力する</li>
+      <li>順位を見る</li>
+      <li>大会が終わったら（最終結果・精算）</li>
+      <li>よくある質問</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===== 1 ===== -->
+<section class="chapter">
+  <h2 class="chapter-title"><small>1</small>このアプリでできること</h2>
+  <p class="chapter-lead">主催者は Google アカウントでログインして大会を作ります。参加者はログインなしで、共有された URL（QR コード）を開くだけで使えます。</p>
+  <table>
+    <tr><th style="width: 22%">場面</th><th>できること</th></tr>
+    <tr><td>大会を作る</td><td>人数・参加者の名前・ルール（持ち点・ウマ・レート・打ち切り時間など）を設定。予選の卓割りは自動で作成</td></tr>
+    <tr><td>参加する</td><td>QR コードを読み取って自分の名前をタップするだけ。「第3回戦 あなたは A 卓」と自分の卓が出る</td></tr>
+    <tr><td>結果を入力する</td><td>卓の 4 人の素点を入れるだけで、+58 / −19 などのポイントを自動計算。3 人分を入れると 4 人目は自動で入る</td></tr>
+    <tr><td>順位を見る</td><td>自分の順位・トップとの差・決勝 A 卓ラインまでの差、全体のポイント順位、各卓の結果</td></tr>
+    <tr><td>時間を管理する</td><td>打ち切りタイマー（初期値 50 分）。会場のモニター用の「会場表示」と、参加者のスマホにも残り時間を表示</td></tr>
+    <tr><td>終わったら</td><td>決勝卓の着順で最終結果を表示。場代・チップを入れると一人ひとりの支払い額が確定。結果をマークダウンで書き出せる</td></tr>
+  </table>
+  <div class="note point"><span class="badge">ポイント</span><br />計算は「25,000 点持ち 30,000 点返し・百の位は五捨六入・ウマ・オカ」です。ウマやレートは大会ごとに変えられます。</div>
+</section>
+
+<!-- ===== 2 ===== -->
+<section class="chapter">
+  <h2 class="chapter-title"><small>2　主催者</small>大会を作る</h2>
+  <p class="chapter-lead">スマホでも PC でも作れます。全部で 4 ステップです。</p>
+
+  <div class="step">
+    <div class="shot"><img src="img/01-login.png" alt="" /></div>
+    <div>
+      <h3><span class="num">1</span>Google でログイン</h3>
+      <ol>
+        <li><code>https://majan-taikai.pages.dev/</code> を開く</li>
+        <li>「Google でログイン」を押して、Google アカウントでログイン</li>
+      </ol>
+      <div class="note point"><span class="badge">ポイント</span><br />作った大会は主催者のアカウントにひもづきます。会社・個人どちらのアドレスでもかまいません。</div>
+      <div class="note caution"><span class="badge">注意</span><br />何も起きないときは、ブラウザのポップアップブロックを一時的にオフにしてください。</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/02-organizer-home.png" alt="" /></div>
+    <div>
+      <h3><span class="num">2</span>新しい大会を作る</h3>
+      <p>「＋ 新しい大会を作る」を押します。下の「これまでの大会」から、前に作った大会の主催者メニューを開けます。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/03-count.png" alt="" /></div>
+    <div>
+      <h3><span class="num">3</span>人数・大会名・開催日</h3>
+      <ol>
+        <li>人数を選ぶ（4 の倍数。ほかの人数は下の欄に入力）</li>
+        <li>大会名と開催日を入れる</li>
+        <li>「次へ（参加者）」</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/04-names.png" alt="" /></div>
+    <div>
+      <h3><span class="num">4</span>参加者の名前</h3>
+      <ul>
+        <li>欄に名前を入れて「追加」。<code>田中、加藤、佐藤</code> のように、改行・読点・カンマ・引用符など区切り方は自由</li>
+        <li>テキストファイルやマークダウンの表（「名前」列）も読み込めます</li>
+        <li>2 回目以降は「過去の参加者から選ぶ」でタップして追加できます</li>
+        <li>名前の「×」で外せます</li>
+      </ul>
+      <div class="note tip"><span class="badge">コツ</span><br />名前を入れるのが面倒なときは「残り ◯ 人を仮の名前（ゲスト1…）で埋める」。あとで主催者メニューの「設定」から本名に直せます。</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/05-rules.png" alt="" /></div>
+    <div>
+      <h3><span class="num">5</span>ルール</h3>
+      <table>
+        <tr><th>項目</th><th>内容</th></tr>
+        <tr><td>持ち点・返し</td><td>オカ（トップ賞）は自動で計算</td></tr>
+        <tr><td>ウマ</td><td>10-30 / 10-20 / 5-10 / なし から選ぶ</td></tr>
+        <tr><td>予選の回数</td><td>4〜8 回から選ぶ。決勝あり / なし</td></tr>
+        <tr><td>レート</td><td>1000 点（1pt）あたり 50 円（点5）/ 100 円（点10）など</td></tr>
+        <tr><td>場代</td><td>「精算で割り勘」か「事前に徴収済み」</td></tr>
+        <tr><td>打ち切り時間</td><td>1 回戦の時間（初期値 50 分）</td></tr>
+        <tr><td>ルール文</td><td>罰符・アガリ放棄など、参加者の「ルール」画面に出る文</td></tr>
+      </table>
+      <div class="note tip"><span class="badge">コツ</span><br />2 回目以降は「前に作った大会のルールを使う（任意）」から、前回のルールをまるごとコピーできます。</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/06-confirm.png" alt="" /></div>
+    <div>
+      <h3><span class="num">6</span>確認して作成</h3>
+      <p>内容を確認して「この内容で大会を作る」。予選の卓割りは、同じ人となるべく当たらず、同じ卓に座り続けないように自動で作られます。</p>
+      <div class="note caution"><span class="badge">注意</span><br />予選の回数は作成後には変えられません。名前・ルール・場代などは、あとから主催者メニューの「設定」で直せます。</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/07-share.png" alt="" /></div>
+    <div>
+      <h3><span class="num">7</span>参加者に共有</h3>
+      <p>QR コードと URL が出ます。QR コードを見せるか、「URL をコピー」してチャットに貼ってください。</p>
+      <div class="note point"><span class="badge">ポイント</span><br />この画面は、主催者メニューの「共有」タブからいつでも開けます。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 3 ===== -->
+<section class="chapter">
+  <h2 class="chapter-title"><small>3　主催者</small>大会当日の進め方</h2>
+  <p class="chapter-lead">主催者メニューは「進行・設定・共有・精算」の 4 つのタブです。</p>
+
+  <div class="step">
+    <div class="shot"><img src="img/08-admin-progress.png" alt="" /></div>
+    <div>
+      <h3><span class="num">1</span>回戦のタイマーを開始する（進行タブ）</h3>
+      <ol>
+        <li>全卓がそろったら「第◯回戦 開始」を押す</li>
+        <li>残り時間が全員の画面に出ます</li>
+        <li>必要に応じて「一時停止 / 再開」「最初から」「リセット（開始前に戻す）」</li>
+      </ol>
+      <p>下には回戦ごとの各卓の状態（入力済・対局中・これから）が出ます。卓を押すと、結果の入力・修正・削除ができます。</p>
+      <div class="note point"><span class="badge">ポイント</span><br />予選がすべて終わると、ここに「決勝の卓を確定」が出ます。予選の順位で上位 4 人が A 卓、次の 4 人が B 卓…になります。</div>
+    </div>
+  </div>
+
+  <div class="step wide">
+    <div>
+      <h3><span class="num">2</span>会場表示（モニターに出す画面）</h3>
+      <p>進行タブの「会場表示を開く」で、会場の PC やモニター向けの画面が開きます。右上の「全画面」で大きく出せます。</p>
+    </div>
+    <img src="img/10-screen.png" alt="" />
+    <ul>
+      <li>今の回戦・残り時間・今の回戦の各卓の状態・ポイント順位を 1 画面で表示</li>
+      <li>名前を出すのは上位 8 人まで。それより下は順位とポイントだけです</li>
+      <li>「音 オン」にすると、残り 5 分と時間切れでチャイムが鳴ります</li>
+      <li>主催者がログインしている PC なら、ここからタイマーを操作できます</li>
+    </ul>
+  </div>
+
+  <div class="step wide">
+    <div>
+      <h3><span class="num">3</span>会場表示に QR コードを出す</h3>
+      <p>「QR を表示」で参加用の QR コードが出ます。参加者が読み取り終わったら「QR を隠す」で戻せます。</p>
+    </div>
+    <img src="img/11-screen-qr.png" alt="" />
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/09-admin-settings.png" alt="" /></div>
+    <div>
+      <h3><span class="num">4</span>名前やルールを直す（設定タブ）</h3>
+      <ul>
+        <li>参加者の名前（ゲスト1 などを本名に）</li>
+        <li>ウマ・レート・場代の扱い・打ち切り時間・ルール文</li>
+      </ul>
+      <p>「設定を保存」でポイントは新しいルールで計算し直されます。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 4 ===== -->
+<section class="chapter">
+  <h2 class="chapter-title"><small>4　参加者</small>参加する</h2>
+  <p class="chapter-lead">ログインは不要です。主催者から届いた QR コードか URL を開くだけです。</p>
+
+  <div class="step">
+    <div class="shot"><img src="img/12-pick-name.png" alt="" /></div>
+    <div>
+      <h3><span class="num">1</span>自分の名前をタップ</h3>
+      <p>名前の一覧から自分をタップします。スマホに記憶されるので、次に開いたときは選び直す必要はありません。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/13-home.png" alt="" /></div>
+    <div>
+      <h3><span class="num">2</span>ホームで自分の卓を確認</h3>
+      <ul>
+        <li>「第3回戦 あなたは A 卓」と同じ卓のメンバー</li>
+        <li>残り時間（主催者がタイマーを開始したとき）</li>
+        <li>今の順位・合計ポイント・トップとの差・決勝 A 卓ラインまでの差</li>
+      </ul>
+      <p>対局が終わったら、トップの人が「結果を入力する」を押します。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/14-home-bottom.png" alt="" /></div>
+    <div>
+      <h3><span class="num">3</span>予定・成績・名前の修正</h3>
+      <ul>
+        <li>「あなたの予定と成績」で、全回戦の卓と着順・ポイントが見られます</li>
+        <li>「ルールを見る」で大会のルール</li>
+        <li>名前を選び間違えたら「名前を選び直す」</li>
+        <li>名前の表記が違うときは「自分の名前を直す」</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 5 ===== -->
+<section class="chapter">
+  <h2 class="chapter-title"><small>5　参加者</small>結果を入力する</h2>
+  <p class="chapter-lead">1 卓につき 1 人（トップの人）が入力します。入力すると、全員の画面にすぐ反映されます。</p>
+
+  <div class="step">
+    <div class="shot"><img src="img/15-input.png" alt="" /></div>
+    <div>
+      <h3><span class="num">1</span>4 人の素点を入れる</h3>
+      <ol>
+        <li>卓の 4 人の名前の横に、点数を<strong>百点単位</strong>で入れる（32,500 点 → <code>325</code>）</li>
+        <li>マイナスのときは左の「＋」を押して「−」に切り替える</li>
+        <li>3 人分を入れると、4 人目は自動で入る（「自動」の印。手で直すこともできる）</li>
+        <li>合計が 100,000 点で「OK」になったら「確認して保存」→「保存する」</li>
+      </ol>
+      <div class="note point"><span class="badge">ポイント</span><br />右側に着順とポイント（+58 など）が自動で出ます。</div>
+      <div class="note caution"><span class="badge">注意</span><br />同じ卓をほかの人が先に保存していたときは、保存できずにお知らせが出ます。入力済みの結果を確認してください。直したいときは主催者に伝えてください。</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot bottom"><img src="img/16-tie.png" alt="" /></div>
+    <div>
+      <h3><span class="num">2</span>同点のとき</h3>
+      <ul>
+        <li>2 人が同点なら「◯◯ を上に」のボタンで、上の着順にする人を選ぶ</li>
+        <li>3 人以上が同点なら「1 番目は ◯◯」→「2 番目は ◯◯」と、上から順番にタップ</li>
+      </ul>
+      <p>順番を選ぶまでは保存できません。「同点の順番を選び直す」でやり直せます。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 6 ===== -->
+<section class="chapter">
+  <h2 class="chapter-title"><small>6</small>順位を見る</h2>
+  <p class="chapter-lead">下のタブの「全体順位」から見られます。</p>
+
+  <div class="step">
+    <div class="shot"><img src="img/17-rank.png" alt="" /></div>
+    <div>
+      <h3><span class="num">1</span>ポイント順位</h3>
+      <ul>
+        <li>全員の順位・合計ポイント・トップとの差</li>
+        <li>オレンジの線より上が、決勝 A 卓に入れる順位（予選中）</li>
+        <li>上の欄で「予選 2 回戦終了時」など、途中の時点の順位に切り替えられます</li>
+        <li>名前を押すと、回戦ごとのポイントが出ます</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/18-tables.png" alt="" /></div>
+    <div>
+      <h3><span class="num">2</span>卓・結果</h3>
+      <p>回戦ごとの卓割りと、各卓の着順・素点（千点単位）・ポイントが見られます。自分の卓はオレンジの枠です。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 7 ===== -->
+<section class="chapter">
+  <h2 class="chapter-title"><small>7</small>大会が終わったら（最終結果・精算）</h2>
+
+  <div class="step">
+    <div class="shot"><img src="img/19-final-home.png" alt="" /></div>
+    <div>
+      <h3><span class="num">1</span>最終結果</h3>
+      <p>全回戦が終わると、ホームに「あなたは ◯位」と最終結果が出ます。</p>
+      <div class="note point"><span class="badge">ポイント</span><br />最終結果は<strong>決勝卓の着順</strong>で決まります。A 卓の 1 着が優勝、2 着が準優勝…、B 卓の 1 着が 5 位…です。お金の精算はポイントで計算します。</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/20-final-result.png" alt="" /></div>
+    <div>
+      <h3><span class="num">2</span>最終結果の一覧</h3>
+      <p>「全体順位」の「最終結果」で全員の最終順位が見られます。右の「ポイント順位」と見比べられます。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/21-settle.png" alt="" /></div>
+    <div>
+      <h3><span class="num">3</span>精算（参加者）</h3>
+      <ol>
+        <li>下のタブの「精算」で、自分のチップ枚数を入れて保存（増えた枚数はプラス、減った枚数はマイナス）</li>
+        <li>全員の合計が 0 枚になると、支払い額が確定します</li>
+      </ol>
+      <p>精算額 ＝ 合計ポイント × レート ＋ チップ × 単価 − 場代の割り勘。「金額を隠す」で金額を伏せられます。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="shot"><img src="img/22-admin-settle.png" alt="" /></div>
+    <div>
+      <h3><span class="num">4</span>精算と書き出し（主催者）</h3>
+      <ol>
+        <li>場代の合計を入れて「保存」（事前に徴収済みなら不要）</li>
+        <li>チップが全員そろったら「精算を確定する」</li>
+        <li>「結果を書き出す（マークダウン）」でファイルをダウンロード、またはコピー</li>
+      </ol>
+      <div class="note tip"><span class="badge">コツ</span><br />書き出したマークダウンは、これまでの集計表と同じ並びです。Claude に渡すとスプレッドシートに転記できます。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 8 ===== -->
+<section class="chapter">
+  <h2 class="chapter-title"><small>8</small>よくある質問</h2>
+
+  <div class="qa"><div class="q">Q. 結果を間違えて保存してしまった</div><div class="a">主催者に伝えてください。主催者は「進行」タブや「全体順位」の「卓・結果」から、どの卓の結果でも修正・削除できます。</div></div>
+  <div class="qa"><div class="q">Q. 名前を選び間違えた／名前の表記が違う</div><div class="a">ホームのいちばん下の「名前を選び直す」で選び直せます。表記が違うときは「自分の名前を直す」で直せます（主催者が「設定」で直した名前が優先されます）。</div></div>
+  <div class="qa"><div class="q">Q. 画面が古いまま変わらない</div><div class="a">ページを再読み込みしてください。開いたままのページは、アプリの更新前の内容のことがあります。</div></div>
+  <div class="qa"><div class="q">Q. 4 で割り切れない人数でもできる？</div><div class="a">いまは 4 の倍数の人数だけです。足りない分は「仮の名前で埋める」で枠を作れます。</div></div>
+  <div class="qa"><div class="q">Q. 決勝 A 卓の境目で同点になったら？</div><div class="a">名前順で決まります。気になる場合は、主催者が予選の結果を確認してから「決勝の卓を確定」してください。</div></div>
+  <div class="qa"><div class="q">Q. お金の計算を間違えないか心配</div><div class="a">精算画面に「pt ◯円 ／ チップ ◯円 ／ 場代 −◯円」の内訳が出ます。全員の合計は、場代を除くとちょうど 0 円になります。</div></div>
+</section>
+
+</body>
+</html>
