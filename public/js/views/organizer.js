@@ -341,6 +341,72 @@ function stepNames(w, go, ctx) {
   return section;
 }
 
+// 予選の回数と決勝の有無。データ上は rules.rounds（決勝を含めた合計）と rules.hasFinal で持つ
+const prelimOf = (rules) => (rules.hasFinal ? rules.rounds - 1 : rules.rounds);
+
+function roundsEditor(rules, { onChange, locked }) {
+  const summary = h('p', { class: 'muted rounds-summary' });
+  const drawSummary = () => {
+    summary.textContent = rules.hasFinal
+      ? `予選 ${prelimOf(rules)} 回 ＋ 決勝 1 回（全 ${rules.rounds} 回戦）`
+      : `全 ${rules.rounds} 回戦（決勝なし）`;
+  };
+  drawSummary();
+  if (locked) {
+    return h('div', {}, summary, h('p', { class: 'muted' }, '回戦の数は、大会を作ったあとでは変えられません（卓割りを最初に作るため）'));
+  }
+
+  const setPrelim = (n) => {
+    rules.rounds = n + (rules.hasFinal ? 1 : 0);
+    drawSummary();
+    onChange?.();
+  };
+  const prelimInput = h('input', {
+    class: 'input num',
+    type: 'number',
+    inputmode: 'numeric',
+    min: '1',
+    max: '20',
+    value: prelimOf(rules),
+    'aria-label': '予選の回数',
+    onInput: (e) => {
+      setPrelim(Number(e.target.value));
+      e.target.parentElement.parentElement.querySelectorAll('.prelim-chip').forEach((c) => c.classList.toggle('on', Number(c.dataset.n) === prelimOf(rules)));
+    },
+  });
+  return h(
+    'div',
+    {},
+    h('div', { class: 'field' }, h('span', {}, '予選の回数'),
+      h('div', { class: 'chip-grid' }, [4, 5, 6, 7, 8].map((n) =>
+        h('button', { type: 'button', class: `chip prelim-chip ${prelimOf(rules) === n ? 'on' : ''}`, 'data-n': n, onClick: (e) => {
+          setPrelim(n);
+          prelimInput.value = n;
+          e.currentTarget.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+          e.currentTarget.classList.add('on');
+        } }, `${n}回`),
+      )),
+    ),
+    h('label', { class: 'field inline' }, h('span', {}, 'その他の回数'), prelimInput),
+    h('div', { class: 'field' }, h('span', {}, '決勝'),
+      h('div', { class: 'segmented' }, [[true, '決勝あり（成績順の卓）'], [false, '決勝なし']].map(([value, label]) =>
+        h('button', { type: 'button', class: rules.hasFinal === value ? 'on' : '', onClick: (e) => {
+          if (rules.hasFinal !== value) {
+            const prelim = prelimOf(rules);
+            rules.hasFinal = value;
+            rules.rounds = prelim + (value ? 1 : 0);
+          }
+          e.currentTarget.parentElement.querySelectorAll('button').forEach((b) => b.classList.remove('on'));
+          e.currentTarget.classList.add('on');
+          drawSummary();
+          onChange?.();
+        } }, label),
+      )),
+    ),
+    summary,
+  );
+}
+
 const RATE_PRESETS = [
   ['50円（点5）', 50],
   ['100円（点10）', 100],
@@ -370,7 +436,8 @@ export function feeModeSwitch(rules, onSelect) {
 }
 
 // 数値ルールとルール文の編集欄（大会作成と主催者画面で共用）
-export function rulesEditor(rules, sections, { onChange } = {}) {
+// roundsLocked が true のとき（大会作成後）は、回戦の設定を変えられないように表示だけにする
+export function rulesEditor(rules, sections, { onChange, roundsLocked = false } = {}) {
   const num = (label, key, opts = {}) =>
     h(
       'label',
@@ -458,9 +525,7 @@ export function rulesEditor(rules, sections, { onChange } = {}) {
       h('div', { class: 'uma-row' }, umaInputs),
     ),
     h('h3', {}, '回戦'),
-    num('回戦数', 'rounds', { min: '1', max: '20' }),
-    h('label', { class: 'field inline' }, h('span', {}, '最終回は成績順の決勝卓'),
-      h('input', { type: 'checkbox', checked: rules.hasFinal, onChange: (e) => { rules.hasFinal = e.target.checked; onChange?.(); } })),
+    roundsEditor(rules, { onChange, locked: roundsLocked }),
     h('h3', {}, 'お金'),
     h('div', { class: 'field' }, h('span', {}, 'レート（1000 点 = 1pt あたりの金額）'),
       h('div', { class: 'chip-grid' }, RATE_PRESETS.map(([label, yen]) =>
@@ -516,8 +581,7 @@ function stepRules(w, go, ctx) {
         const r = w.rules;
         if (r.uma.reduce((a, b) => a + b, 0) !== 0) return toast('ウマの合計を 0 にしてください', 'error');
         if (r.returnPoints < r.startPoints) return toast('返しは持ち点以上にしてください', 'error');
-        if (!(r.rounds >= 1)) return toast('回戦数を入れてください', 'error');
-        if (r.hasFinal && r.rounds < 2) return toast('決勝ありの場合は 2 回戦以上にしてください', 'error');
+        if (!(prelimOf(r) >= 1) || !Number.isInteger(prelimOf(r))) return toast('予選の回数を入れてください', 'error');
         go(4);
       } }, '次へ（確認）'),
     ),

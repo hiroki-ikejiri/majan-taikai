@@ -38,6 +38,11 @@ export function deriveTournament(t, results) {
   // 卓割りにない結果（決勝の作り直し前の残りなど）は集計に入れない
   const validResults = results.filter((r) => tablesOf(r.round)?.some((tb) => tb.label === r.table));
   const standings = computeStandings(players, validResults, rules, calcHanchan);
+  // 第 round 回戦までの結果だけで出した順位（「予選 3 回戦終了時」など、途中の時点の順位を見るため）
+  const standingsAt = (round) => computeStandings(players, validResults.filter((r) => r.round <= round), rules, calcHanchan);
+  // 結果がそろった最後の回戦（まだなければ 0）
+  let lastDoneRound = 0;
+  for (let r = 1; r <= rules.rounds && roundDone(r); r += 1) lastDoneRound = r;
 
   // 最終結果（決勝ありで全回戦が終わったとき）。決勝なしならポイントランキングがそのまま最終結果
   let finalResult = null;
@@ -64,6 +69,9 @@ export function deriveTournament(t, results) {
     allDone,
     prelimDone,
     standings,
+    standingsAt,
+    lastDoneRound,
+    results: validResults,
     finalResult,
     tableOfPlayer,
     nameOf,

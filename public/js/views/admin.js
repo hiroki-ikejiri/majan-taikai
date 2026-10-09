@@ -1,12 +1,10 @@
 // 主催者の画面（進行・設定・共有・精算）
-import { h, fmtPt, toast, modal, copyText } from '../ui.js';
+import { h, fmtPt, toast, copyText } from '../ui.js';
 import { buildResultMarkdown, resultFileName } from '../logic/exportMarkdown.js';
 import { DEFAULT_RULES } from '../logic/scoring.js';
 import { makeFinalTables, TABLE_LABELS } from '../logic/seating.js';
 import { chipStatus, feeReady, isFeePrepaid } from '../logic/settlement.js';
-import { resultIdOf } from '../store/index.js';
-import { scoreForm, newDraft } from './scoreForm.js';
-import { resultTable } from './tournament.js';
+import { openResultEditor } from './resultEditor.js';
 import { rulesEditor, shareCard, feeModeSwitch } from './organizer.js';
 
 const roundTitle = (d, r) => (d.rules.hasFinal && r === d.rules.rounds ? `第${r}回戦（決勝）` : `第${r}回戦`);
@@ -133,60 +131,6 @@ function renderProgress(ctx) {
   return wrap;
 }
 
-// 結果の入力・修正・削除（主催者用）
-function openResultEditor(ctx, round, table) {
-  const { state, store } = ctx;
-  const t = state.t;
-  const d = state.d;
-  const rid = resultIdOf(round, table.label);
-  const existing = d.resultOf(round, table.label);
-  const draft = newDraft(table.players, existing);
-  let closeModal = null;
-
-  const body = h(
-    'div',
-    {},
-    existing && h('div', {}, h('h3', {}, '現在の結果'), resultTable(d, existing), h('h3', {}, '修正する')),
-    scoreForm({
-      draft,
-      tablePlayers: table.players,
-      nameOf: d.nameOf,
-      rules: d.rules,
-      submitLabel: existing ? '確認して上書き' : '確認して保存',
-      onSubmit: async (seats) => {
-        try {
-          await store.overwriteResult(t.id, rid, { round, table: table.label, seats, enteredBy: 'owner', enteredByName: '主催者' });
-          toast('保存しました', 'ok');
-          closeModal?.();
-        } catch (e) {
-          toast(`保存できませんでした（${e.message}）`, 'error');
-          return false;
-        }
-        return true;
-      },
-    }),
-  );
-  const actions = [{ label: '閉じる' }];
-  if (existing) {
-    actions.unshift({
-      label: '結果を削除',
-      kind: 'danger',
-      onClick: async () => {
-        if (!window.confirm(`${roundTitle(d, round)} ${table.label}卓の結果を削除しますか？`)) return false;
-        try {
-          await store.deleteResult(t.id, rid);
-          toast('削除しました', 'ok');
-        } catch (e) {
-          toast(`削除できませんでした（${e.message}）`, 'error');
-          return false;
-        }
-        return true;
-      },
-    });
-  }
-  closeModal = modal({ title: `${roundTitle(d, round)} ${table.label}卓`, body, actions });
-}
-
 // ===== 設定 =====
 function renderSettings(ctx) {
   const { state, store } = ctx;
@@ -237,7 +181,7 @@ function renderSettings(ctx) {
       h('p', { class: 'muted' }, '名前の表記を直せます（卓割りはそのまま）'),
       ed.names.map((n, i) => h('input', { class: 'input', value: n, onInput: (e) => { ed.names[i] = e.target.value; markDirty(); } })),
     ),
-    h('section', { class: 'card' }, h('h2', {}, 'ルール'), rulesEditor(ed.rules, ed.sections, { onChange: markDirty })),
+    h('section', { class: 'card' }, h('h2', {}, 'ルール'), rulesEditor(ed.rules, ed.sections, { onChange: markDirty, roundsLocked: true })),
     h('div', { class: 'sticky-actions' }, h('button', { class: 'btn primary big', onClick: save }, '設定を保存')),
   );
 }
