@@ -2,7 +2,7 @@
 import { h, toast, copyText, qrCode } from '../ui.js';
 import { DEFAULT_RULES, okaOf } from '../logic/scoring.js';
 import { makePrelimSchedule, TABLE_LABELS } from '../logic/seating.js';
-import { parseNamesFromMarkdownTable, cleanNames } from '../logic/names.js';
+import { parseNames, cleanNames, fillWithGuests, isGuestName } from '../logic/names.js';
 import { DEFAULT_RULE_SECTIONS } from '../defaultRules.js';
 
 export const shareUrlOf = (id) => `${location.origin}${location.pathname}#/t/${id}`;
@@ -233,6 +233,26 @@ function stepNames(w, go, ctx) {
     ),
   );
 
+  // 名前を入れるのが面倒なときは、残りをゲスト1、ゲスト2…で埋める
+  if (w.names.length < w.count) {
+    section.append(
+      h(
+        'button',
+        {
+          class: 'btn',
+          onClick: () => {
+            const added = w.count - w.names.length;
+            w.names = fillWithGuests(w.names, w.count);
+            toast(`${added} 人を仮の名前で追加しました`, 'ok');
+            go(2);
+          },
+        },
+        `残り ${w.count - w.names.length} 人を仮の名前（ゲスト1…）で埋める`,
+      ),
+      h('p', { class: 'muted' }, '仮の名前は、大会を作ったあとで主催者メニューの「設定」から本名に直せます'),
+    );
+  }
+
   // 過去の参加者から選ぶ
   if (past.length) {
     section.append(
@@ -259,44 +279,41 @@ function stepNames(w, go, ctx) {
     );
   }
 
-  // 手入力
-  const manual = h('textarea', { class: 'input', rows: '3', placeholder: '1 行に 1 人ずつ（読点・カンマ区切りも可）' });
-  section.append(
-    h('h3', {}, '手で入力'),
-    manual,
-    h('button', { class: 'btn', onClick: () => addNames(manual.value.split(/[\n,、，]/)) }, '追加'),
-  );
-
-  // マークダウンの表
-  const md = h('textarea', { class: 'input', rows: '4', placeholder: '| 名前 | 所属 |\n|---|---|\n| 山田 | 本社 |' });
+  // 手入力・ファイル読み込み（マークダウンの表もただのテキストも同じ欄で受け付ける）
+  const text = h('textarea', {
+    class: 'input',
+    rows: '4',
+    placeholder: '田中、加藤、佐藤\n（改行・読点・カンマ・引用符などで区切れば OK。マークダウンの表も読めます）',
+  });
   const file = h('input', {
     type: 'file',
-    accept: '.md,.markdown,.txt,text/markdown,text/plain',
+    accept: '.txt,.md,.markdown,.csv,.tsv,text/plain,text/markdown,text/csv',
+    'aria-label': '名前のファイルを選ぶ',
     onChange: async (e) => {
       const f = e.target.files[0];
       if (!f) return;
-      md.value = await f.text();
+      text.value = await f.text();
     },
   });
   section.append(
-    h('h3', {}, 'マークダウンの表から読み込む'),
-    h('p', { class: 'muted' }, '「名前」列を読み込みます（見出しがなければ 1 列目）'),
+    h('h3', {}, '名前を入力・ファイルから読み込む'),
+    h('p', { class: 'muted' }, '「田中、加藤」「田中,加藤」「\"田中\",\"加藤\"」や 1 行 1 人など、区切り方は自由です。テキストファイルやマークダウンの表（「名前」列）も読み込めます'),
     file,
-    md,
+    text,
     h(
       'button',
       {
         class: 'btn',
         onClick: () => {
-          const names = parseNamesFromMarkdownTable(md.value);
+          const names = parseNames(text.value);
           if (!names.length) {
-            toast('表が見つかりませんでした', 'error');
+            toast('名前が見つかりませんでした', 'error');
             return;
           }
           addNames(names);
         },
       },
-      '読み込む',
+      '追加',
     ),
   );
 
@@ -497,7 +514,8 @@ function stepConfirm(w, go, ctx, store, state) {
             schedule,
             venueFee: null,
           });
-          await store.addPastPlayers(state.user.uid, w.names).catch(() => {});
+          // 仮の名前（ゲスト1…）は過去の参加者に残さない
+          await store.addPastPlayers(state.user.uid, w.names.filter((n) => !isGuestName(n))).catch(() => {});
           wizard = null;
           toast('大会を作成しました', 'ok');
           ctx.navigate(`#/t/${id}/admin/share`);

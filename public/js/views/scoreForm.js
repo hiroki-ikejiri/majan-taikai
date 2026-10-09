@@ -1,6 +1,7 @@
 // 素点の入力フォーム（参加者の結果入力と、主催者の修正で共用）
 //
 // 入力は百点単位。「325」と打つと 32,500 点になる。マイナスは ± ボタンで切り替える。
+// 3 人分を入れると、残り 1 人の欄に「合計 − 3 人の合計」が自動で入る（手で上書きも可）。
 // 席（東南西北）ごとに誰が座ったかを選び、合計 10 万点になったら確定できる
 import { h, fmtPt, ptClass, fmtScore, modal } from '../ui.js';
 import { calcHanchan, validateScores, expectedTotal } from '../logic/scoring.js';
@@ -14,9 +15,30 @@ export function newDraft(tablePlayers, initial) {
       seats: initial.seats.map((s) => s.playerId),
       hundreds: initial.seats.map((s) => String(Math.abs(s.score / 100))),
       negative: initial.seats.map((s) => s.score < 0),
+      auto: null,
     };
   }
-  return { seats: [...tablePlayers], hundreds: ['', '', '', ''], negative: [false, false, false, false] };
+  // auto は自動で入れた席の番号（なければ null）
+  return { seats: [...tablePlayers], hundreds: ['', '', '', ''], negative: [false, false, false, false], auto: null };
+}
+
+// 手で入れた 3 人分から、残り 1 人の点数を自動で入れる。
+// 手入力が 3 人分そろっていなければ、前に自動で入れた値を消す
+export function applyAutoFill(draft, total) {
+  const seats = [0, 1, 2, 3];
+  const manual = seats.filter((i) => i !== draft.auto && draft.hundreds[i] !== '');
+  const rest = seats.filter((i) => !manual.includes(i));
+  if (manual.length === 3 && rest.length === 1) {
+    const i = rest[0];
+    const remaining = total - manual.reduce((sum, k) => sum + scoreOf(draft, k), 0);
+    draft.auto = i;
+    draft.hundreds[i] = String(Math.abs(remaining) / 100);
+    draft.negative[i] = remaining < 0;
+  } else if (draft.auto !== null) {
+    draft.hundreds[draft.auto] = '';
+    draft.negative[draft.auto] = false;
+    draft.auto = null;
+  }
 }
 
 function scoreOf(draft, i) {
@@ -41,6 +63,9 @@ export function scoreForm({ draft, tablePlayers, nameOf, rules, submitLabel = '�
     let preview = null;
     if (filled) preview = calcHanchan(scores, rules);
     rows.forEach((row, i) => {
+      if (document.activeElement !== row.input) row.input.value = draft.hundreds[i];
+      row.input.classList.toggle('auto', draft.auto === i);
+      row.autoBadge.hidden = draft.auto !== i;
       row.scoreLabel.textContent = Number.isFinite(scores[i]) ? `${fmtScore(scores[i])} 点` : '';
       row.scoreLabel.className = `score-echo ${scores[i] < 0 ? 'minus' : ''}`;
       row.signBtn.textContent = draft.negative[i] ? '−' : '+';
@@ -85,6 +110,9 @@ export function scoreForm({ draft, tablePlayers, nameOf, rules, submitLabel = '�
       onInput: (e) => {
         draft.hundreds[i] = e.target.value.replace(/[^0-9]/g, '');
         e.target.value = draft.hundreds[i];
+        // 自動で入った欄を手で直したら、その欄は手入力扱いにする
+        if (draft.auto === i) draft.auto = null;
+        applyAutoFill(draft, expectedTotal(rules));
         refresh();
       },
     });
@@ -94,11 +122,15 @@ export function scoreForm({ draft, tablePlayers, nameOf, rules, submitLabel = '�
       'aria-label': 'プラス・マイナス切り替え',
       onClick: () => {
         draft.negative[i] = !draft.negative[i];
+        if (draft.auto === i) draft.auto = null;
+        else applyAutoFill(draft, expectedTotal(rules));
         refresh();
       },
     });
     const row = {
+      input,
       signBtn,
+      autoBadge: h('span', { class: 'badge auto-badge', hidden: true }, '自動'),
       scoreLabel: h('div', { class: 'score-echo' }),
       pt: h('div', { class: 'pt-preview' }),
       rank: h('div', { class: 'rank-preview' }),
@@ -112,7 +144,7 @@ export function scoreForm({ draft, tablePlayers, nameOf, rules, submitLabel = '�
         'div',
         { class: 'seat-main' },
         select,
-        h('div', { class: 'score-line' }, signBtn, input, h('span', { class: 'suffix' }, '00'), row.scoreLabel),
+        h('div', { class: 'score-line' }, signBtn, input, h('span', { class: 'suffix' }, '00'), row.autoBadge, row.scoreLabel),
       ),
       h('div', { class: 'seat-result' }, row.pt, row.rank),
     );
@@ -157,7 +189,7 @@ export function scoreForm({ draft, tablePlayers, nameOf, rules, submitLabel = '�
   const form = h(
     'div',
     { class: 'score-form' },
-    h('p', { class: 'hint' }, '席順（東南西北）に、百点単位で入力。例）32,500 点 → 325'),
+    h('p', { class: 'hint' }, '席順（東南西北）に、百点単位で入力。例）32,500 点 → 325。3 人分を入れると残り 1 人は自動で入ります'),
     rows.map((r) => r.el),
     totalBox,
     submitBtn,
