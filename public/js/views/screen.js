@@ -97,6 +97,18 @@ export function renderScreen(ctx) {
         'div',
         { class: 'row' },
         soundBtn,
+        // 参加用 QR コードはふだん隠しておき、参加者に読み取ってもらうときだけ出す
+        h(
+          'button',
+          {
+            class: `btn small ${state.screenQr ? 'primary' : ''}`,
+            onClick: () => {
+              state.screenQr = !state.screenQr;
+              ctx.rerender();
+            },
+          },
+          state.screenQr ? 'QR を隠す' : 'QR を表示',
+        ),
         h('button', { class: 'btn small', onClick: () => document.documentElement.requestFullscreen?.() }, '全画面'),
         isOwner && h('a', { class: 'btn small', href: `#/t/${t.id}/admin` }, '主催者メニューへ'),
       ),
@@ -109,7 +121,7 @@ export function renderScreen(ctx) {
         { class: 'screen-main' },
         h(
           'div',
-          { class: 'screen-top' },
+          { class: `screen-top ${state.screenQr ? 'with-qr' : ''}` },
           h(
             'div',
             { class: 'screen-clock' },
@@ -118,7 +130,7 @@ export function renderScreen(ctx) {
             // タイマーの操作は主催者がログインしているときだけ出す
             isOwner && timerControls(ctx, { big: true }),
           ),
-          h('div', { class: 'screen-qr' }, qrCode(url), h('div', { class: 'screen-qr-text' }, 'スマホで読み取って参加')),
+          state.screenQr && h('div', { class: 'screen-qr' }, qrCode(url), h('div', { class: 'screen-qr-text' }, 'スマホで読み取って参加')),
         ),
         tableBox,
       ),

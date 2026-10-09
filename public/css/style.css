@@ -583,7 +583,10 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 12px; font-
 .screen .timer.big .timer-note { font-size: clamp(16px, 2.4vw, 32px); }
 .timer-controls.center { justify-content: center; }
 .btn.screen-btn { font-size: clamp(16px, 1.6vw, 22px); min-height: 48px; padding: 8px 22px; }
-.screen-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.screen-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: center; }
+.screen-top.with-qr { grid-template-columns: minmax(0, 1fr) auto; }
+/* QR を隠しているときは、残り時間をもっと大きく出す */
+.screen-top:not(.with-qr) .timer.big .timer-left { font-size: clamp(72px, min(15vw, 30vh), 320px); }
 .screen-clock { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .screen-tables { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); grid-auto-rows: min-content; gap: 5px; margin-top: 8px; }
 .screen-table { border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; font-size: clamp(12px, min(1.1vw, 1.9vh), 20px); line-height: 1.4; }
