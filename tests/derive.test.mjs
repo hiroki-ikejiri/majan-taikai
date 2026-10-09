@@ -127,3 +127,16 @@ test('優勝・準優勝の呼び名', async () => {
   const { placeLabel } = await import('../public/js/logic/standings.js');
   assert.deepEqual([1, 2, 3, 5].map(placeLabel), ['優勝', '準優勝', '3位', '5位']);
 });
+
+test('途中の時点の順位（第 N 回戦終了時）を出せる', () => {
+  const t = buildTournament();
+  const all = toList(resultsFor(t, [1, 2, 3]));
+  const partial3 = all.filter((r) => r.round < 3 || r.table === 'A'); // 3 回戦は A 卓だけ入力済み
+  const d = deriveTournament(t.data, partial3);
+  assert.equal(d.lastDoneRound, 2);
+  const at1 = d.standingsAt(1);
+  assert.ok(at1.every((r) => r.games === 1));
+  assert.ok(d.standingsAt(2).every((r) => r.games === 2));
+  // 「現在」は 3 回戦の入力済みの卓も含む
+  assert.equal(d.standings.reduce((n, r) => n + r.games, 0), 8 * 2 + 4);
+});

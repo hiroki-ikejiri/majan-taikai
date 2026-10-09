@@ -547,3 +547,15 @@ button.table-card { cursor: pointer; }
 .table-label.place { font-size: 40px; color: var(--band); }
 .md-preview { white-space: pre; overflow-x: auto; max-height: 50vh; background: #111; color: #e5e5e5; padding: 12px; border-radius: 8px; font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
 details summary { cursor: pointer; color: var(--accent); margin-top: 12px; font-weight: 600; }
+.rounds-summary { font-weight: 700; color: var(--accent-strong); }
+.as-of { margin: 10px 0 0; font-weight: 700; }
+.table-line { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: baseline; }
+.tl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-score { font-size: 12px; font-variant-numeric: tabular-nums; }
+.tl-pt { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+.table-card .edit-result { width: 100%; margin-top: 8px; }
+@media (max-width: 520px) {
+  .table-grid.results { grid-template-columns: 1fr; }
+}
+.tl-rank { display: inline-block; min-width: 2.4em; color: var(--muted); font-weight: 700; }
+.table-line .tl-score { min-width: 3em; text-align: right; }
