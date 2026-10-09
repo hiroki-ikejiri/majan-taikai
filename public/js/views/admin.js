@@ -2,11 +2,11 @@
 import { h, fmtPt, toast, modal } from '../ui.js';
 import { DEFAULT_RULES } from '../logic/scoring.js';
 import { makeFinalTables, TABLE_LABELS } from '../logic/seating.js';
-import { chipStatus } from '../logic/settlement.js';
+import { chipStatus, feeReady, isFeePrepaid } from '../logic/settlement.js';
 import { resultIdOf } from '../store/index.js';
 import { scoreForm, newDraft } from './scoreForm.js';
 import { resultTable } from './tournament.js';
-import { rulesEditor, shareCard } from './organizer.js';
+import { rulesEditor, shareCard, feeModeSwitch } from './organizer.js';
 
 const roundTitle = (d, r) => (d.rules.hasFinal && r === d.rules.rounds ? `第${r}回戦（決勝）` : `第${r}回戦`);
 
@@ -247,18 +247,30 @@ function renderAdminSettle(ctx) {
     h(
       'section',
       { class: 'card' },
-      h('h2', {}, '場代の合計'),
-      !d.allDone && h('p', { class: 'muted' }, 'まだ全回戦が終わっていません（先に入力しても大丈夫です）'),
-      h('div', { class: 'row' }, feeInput, h('span', {}, '円'), h('button', { class: 'btn primary', onClick: async () => {
-        const v = Number(feeInput.value);
-        if (!Number.isFinite(v) || v < 0 || feeInput.value === '') return toast('場代を入れてください', 'error');
+      h('h2', {}, '場代'),
+      feeModeSwitch(d.rules, async (mode) => {
         try {
-          await store.updateTournament(t.id, { venueFee: v });
-          toast('場代を保存しました', 'ok');
+          await store.updateTournament(t.id, { rules: { ...t.rules, feeMode: mode } });
+          toast(mode === 'prepaid' ? '場代は事前徴収済みにしました' : '場代は精算で割り勘にしました', 'ok');
         } catch (e) {
           toast(`保存できませんでした（${e.message}）`, 'error');
         }
-      } }, '保存')),
+      }),
+      isFeePrepaid(d.rules)
+        ? h('p', { class: 'muted' }, '場代は精算に含めません。チップがそろえば精算を確定できます。')
+        : [
+            !d.allDone && h('p', { class: 'muted' }, 'まだ全回戦が終わっていません（先に入力しても大丈夫です）'),
+            h('div', { class: 'row' }, h('span', {}, '合計'), feeInput, h('span', {}, '円'), h('button', { class: 'btn primary', onClick: async () => {
+              const v = Number(feeInput.value);
+              if (!Number.isFinite(v) || v < 0 || feeInput.value === '') return toast('場代を入れてください', 'error');
+              try {
+                await store.updateTournament(t.id, { venueFee: v });
+                toast('場代を保存しました', 'ok');
+              } catch (e) {
+                toast(`保存できませんでした（${e.message}）`, 'error');
+              }
+            } }, '保存')),
+          ],
     ),
     h(
       'section',
@@ -312,7 +324,7 @@ function renderAdminSettle(ctx) {
               'button',
               {
                 class: 'btn primary big',
-                disabled: !(d.allDone && status.ready && Number.isFinite(t.venueFee)),
+                disabled: !(d.allDone && status.ready && feeReady(d.rules, t.venueFee)),
                 onClick: async () => {
                   try {
                     await store.updateTournament(t.id, { status: 'settled' });
@@ -324,8 +336,8 @@ function renderAdminSettle(ctx) {
               },
               '精算を確定する',
             ),
-            !(d.allDone && status.ready && Number.isFinite(t.venueFee)) &&
-              h('p', { class: 'muted' }, '全回戦の結果・場代・チップ（合計 0 枚）がそろうと押せます'),
+            !(d.allDone && status.ready && feeReady(d.rules, t.venueFee)) &&
+              h('p', { class: 'muted' }, '全回戦の結果・場代（事前徴収なら不要）・チップ（合計 0 枚）がそろうと押せます'),
           ],
     ),
   );

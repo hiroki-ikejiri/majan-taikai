@@ -30,13 +30,18 @@ test.describe('大会作成', () => {
     await expect(page.locator('.count-line')).toHaveText('8 / 8 人');
     await page.getByRole('button', { name: '次へ（ルール）' }).click();
 
-    // ウマを 10-20 に変える
+    // ウマを 10-20、レートを 50 円（点5）、場代を事前徴収にする
     await page.getByRole('button', { name: '10-20' }).click();
+    await page.getByRole('button', { name: '50円（点5）' }).click();
+    await expect(page.getByLabel('レート（円）')).toHaveValue('50');
+    await page.getByRole('button', { name: '事前に徴収済み' }).click();
     await expect(page.getByText('オカ（トップ賞）は自動で +20 になります')).toBeVisible();
     await page.getByRole('button', { name: '次へ（確認）' }).click();
 
     await expect(page.getByText('予選 6 回 ＋ 決勝 1 回')).toBeVisible();
     await expect(page.getByText('20 / 10 / -10 / -20')).toBeVisible();
+    await expect(page.getByText('1000 点 50 円・チップ 500 円')).toBeVisible();
+    await expect(page.getByText('事前に徴収済み')).toBeVisible();
     await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
 
     await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible();
@@ -222,6 +227,38 @@ test.describe('主催者', () => {
     for (const name of top4) await expect(finalA).toContainText(name);
   });
 
+  test('全回戦が終わると最終結果（決勝卓の着順）とポイントランキングが出る', async ({ page }) => {
+    const t = buildTournament();
+    // 決勝 A 卓は p1〜p4。北家（p4）がトップ、東家（p1）がラス
+    t.data.schedule['7'] = [
+      { label: 'A', players: ['p1', 'p2', 'p3', 'p4'] },
+      { label: 'B', players: ['p5', 'p6', 'p7', 'p8'] },
+    ];
+    const results = resultsFor(t, [1, 2, 3, 4, 5, 6]);
+    Object.assign(results, resultsFor(t, [7], [10000, 20000, 30000, 40000]));
+    await seed(page, { tournament: t, results, me: 'p4' });
+
+    await page.goto(`/#/t/${t.id}`);
+    await expect(page.locator('.hero-sub')).toHaveText('全回戦 終了 ・ 最終結果');
+    await expect(page.locator('.table-label.place')).toHaveText('優勝');
+    await expect(page.getByText(/ポイントランキングは \d+ 位/)).toBeVisible();
+
+    await page.getByRole('link', { name: '最終結果・ポイントを見る' }).click();
+    // 最初に「最終結果」が開く
+    await expect(page.getByRole('button', { name: '最終結果' })).toHaveClass(/on/);
+    const names = page.locator('.final-row .rank-name');
+    await expect(names.nth(0)).toContainText('鈴木 優勝');
+    await expect(names.nth(1)).toContainText('佐藤 準優勝');
+    await expect(names.nth(3)).toContainText('池尻 4位');
+    await expect(names.nth(4)).toContainText('渡辺 5位');
+    await expect(page.locator('.table-divider')).toHaveText(['A卓', 'B卓']);
+
+    // ポイントランキングに切り替えられる
+    await page.getByRole('button', { name: 'ポイント' }).click();
+    await expect(page.locator('.rank-row')).toHaveCount(8);
+    await expect(page.locator('.final-line')).toBeVisible();
+  });
+
   test('主催者は結果を修正でき、ポイントが再計算される', async ({ page }) => {
     const t = buildTournament();
     await seed(page, { tournament: t, results: resultsFor(t, [1]), organizer: true, me: 'p1' });
@@ -298,5 +335,33 @@ test.describe('精算', () => {
     await expect(page.locator('.toast.ok').last()).toHaveText('精算を確定しました');
     await page.goto(`/#/t/${t.id}/input`);
     await expect(page.getByText('精算が確定したため、入力は締め切りました。')).toBeVisible();
+  });
+
+  test('場代を事前徴収済みにすると、場代なしで精算が確定する', async ({ page }) => {
+    const t = buildTournament({ rules: { feeMode: 'prepaid' } });
+    t.data.schedule['7'] = [
+      { label: 'A', players: ['p1', 'p2', 'p3', 'p4'] },
+      { label: 'B', players: ['p5', 'p6', 'p7', 'p8'] },
+    ];
+    const chips = { p1: 5, p2: -2, p3: 0, p4: 1, p5: -3, p6: 2, p7: -1, p8: -2 };
+    await seed(page, { tournament: t, results: resultsFor(t, [1, 2, 3, 4, 5, 6, 7]), chips, organizer: true, me: 'p1' });
+
+    await page.goto(`/#/t/${t.id}/settle`);
+    await expect(page.getByRole('heading', { name: '精算額', exact: true })).toBeVisible();
+    await expect(page.getByText('場代は事前に徴収済みのため、精算には含めていません')).toBeVisible();
+    // 場代を引かないので、全員の合計はちょうど 0 円
+    const amounts = await page.locator('.settle-table td:last-child').evaluateAll((els) =>
+      els.map((e) => Number(e.textContent.replace(/[^0-9−+]/g, '').replace('−', '-'))),
+    );
+    expect(amounts.reduce((a, b) => a + b, 0)).toBe(0);
+
+    await page.goto(`/#/t/${t.id}/admin/settle`);
+    await expect(page.getByPlaceholder('例 48000')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '精算を確定する' })).toBeEnabled();
+
+    // 主催者が「精算で割り勘」に戻すと場代の入力が必要になる
+    await page.getByRole('button', { name: '精算で割り勘' }).click();
+    await expect(page.getByPlaceholder('例 48000')).toBeVisible();
+    await expect(page.getByRole('button', { name: '精算を確定する' })).toBeDisabled();
   });
 });
