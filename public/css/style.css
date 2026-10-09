@@ -268,20 +268,18 @@ textarea.input { resize: vertical; }
 .picker .input { flex: 1; }
 .seat-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 58px;
+  grid-template-columns: minmax(0, 1fr) 58px;
   gap: 8px;
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
-.wind {
-  font-size: 30px;
-  font-weight: 800;
-  text-align: center;
-  background: var(--surface-2);
-  border-radius: 10px;
-  line-height: 52px;
-}
+.seat-name { font-size: 18px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tie-box:empty { display: none; }
+.tie-question { background: var(--warn-soft); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+.tie-question p { margin: 0 0 6px; font-weight: 700; }
+.tie-question p.muted { font-weight: 400; }
+.tie-btn { background: var(--surface); }
 .seat-select {
   width: 100%;
   font: inherit;
@@ -581,17 +579,17 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 12px; font-
 .screen-main, .screen-side { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .screen-round { font-size: clamp(26px, 4vw, 56px); font-weight: 800; text-align: center; line-height: 1.2; }
 .screen .timer.big { margin: 0; }
-.screen .timer.big .timer-left { font-size: clamp(44px, min(8vw, 17vh), 170px); }
+.screen .timer.big .timer-left { font-size: clamp(64px, min(11.5vw, 27vh), 280px); letter-spacing: -0.02em; }
 .screen .timer.big .timer-note { font-size: clamp(16px, 2.4vw, 32px); }
 .timer-controls.center { justify-content: center; }
 .btn.screen-btn { font-size: clamp(16px, 1.6vw, 22px); min-height: 48px; padding: 8px 22px; }
 .screen-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
 .screen-clock { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-.screen-tables { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); grid-auto-rows: min-content; gap: 6px; margin-top: 10px; }
-.screen-table { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: clamp(13px, min(1.2vw, 2.2vh), 20px); }
+.screen-tables { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); grid-auto-rows: min-content; gap: 5px; margin-top: 8px; }
+.screen-table { border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; font-size: clamp(12px, min(1.1vw, 1.9vh), 20px); line-height: 1.4; }
 .screen-table-names { color: var(--muted); font-size: 0.9em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .screen-qr { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.screen-qr .qr { width: clamp(110px, 22vh, 230px); height: clamp(110px, 22vh, 230px); margin: 0; }
+.screen-qr .qr { width: clamp(100px, 19vh, 220px); height: clamp(100px, 19vh, 220px); margin: 0; }
 .screen-qr-text { font-weight: 700; color: var(--muted); font-size: clamp(12px, 1.2vw, 18px); text-align: center; }
 .screen-side h2 { font-size: clamp(18px, 1.8vw, 26px); margin: 0 0 6px; }
 .screen-rank-list { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); column-gap: 14px; }
@@ -611,3 +609,10 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 12px; font-
   .screen-grid { grid-template-columns: 1fr; }
 }
 .my-chip-compact { padding: 12px 16px; }
+.count-hint { text-align: center; margin: 6px 0 0; }
+.copy-rules { background: var(--surface-2); border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; }
+.copy-rules summary { margin-top: 0; }
+
+.screen-rank-name.hidden-name::after { content: '・・・'; color: var(--muted); font-weight: 400; }
+.screen-empty { font-size: clamp(16px, 1.6vw, 24px); color: var(--muted); margin: auto; text-align: center; }
+.screen-rank-note { font-size: 13px; margin: 6px 0 0; text-align: right; }

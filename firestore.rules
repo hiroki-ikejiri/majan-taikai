@@ -57,6 +57,17 @@ service cloud.firestore {
         allow read: if signedIn();
         allow write: if signedIn() && (isOpen(tid) || isOwner(tid));
       }
+
+      // 参加者が自分で直した名前。精算確定までは参加者も直せる（主催者は「設定」で上書きし、ここを消す）
+      match /names/{pid} {
+        allow read: if signedIn();
+        allow create, update: if signedIn() && (isOpen(tid) || isOwner(tid))
+          && request.resource.data.keys().hasOnly(['name'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 20;
+        allow delete: if signedIn() && (isOpen(tid) || isOwner(tid));
+      }
     }
 
     // 主催者ごとの過去参加者リスト

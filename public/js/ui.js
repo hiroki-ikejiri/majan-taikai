@@ -115,3 +115,17 @@ export function qrCode(text) {
     });
   return box;
 }
+
+// エラーを、何が起きてどうすればいいかがわかる日本語にする（Firebase の英語のエラーをそのまま見せない）
+export function errorText(e) {
+  const code = String(e?.code || '');
+  if (e?.message === 'exists') return 'この卓はすでに入力済みです。画面を開き直して確認してください';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'インターネットにつながっていません。電波のよいところでもう一度試してください';
+  if (code.includes('permission-denied')) return 'この操作をする権限がありません。主催者の操作なら、主催者として Google ログインしているか確認してください';
+  if (code.includes('unavailable') || code.includes('network') || code.includes('deadline-exceeded')) return '通信できませんでした。電波のよいところでもう一度試してください';
+  if (code.includes('popup-closed-by-user') || code.includes('cancelled-popup-request')) return 'ログインの画面が閉じられました。もう一度押してください';
+  if (code.includes('popup-blocked')) return 'ログインの画面がブロックされました。ブラウザの設定でポップアップを許可してください';
+  if (code.includes('unauthorized-domain')) return 'このサイトからのログインが許可されていません。Firebase の承認済みドメインを確認してください';
+  if (code.includes('admin-restricted-operation') || code.includes('operation-not-allowed')) return 'ログインの方法が有効になっていません。Firebase の設定を確認してください';
+  return `思わぬエラーが起きました。少し待ってからもう一度試してください（${e?.message || e}）`;
+}

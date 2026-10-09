@@ -54,3 +54,13 @@ test('自分の大会だけが一覧に出る', async () => {
   const list = await store.listMyTournaments('u');
   assert.deepEqual(list.map((t) => t.name), ['mine']);
 });
+
+test('参加者が直した名前は保存でき、null で消せる', async () => {
+  const store = createDemoStore();
+  await store.setName('t', 'p1', '池尻ひろき');
+  let names = await new Promise((resolve) => store.watchNames('t', resolve));
+  assert.deepEqual(names, { p1: '池尻ひろき' });
+  await store.setName('t', 'p1', null);
+  names = await new Promise((resolve) => store.watchNames('t', resolve));
+  assert.deepEqual(names, {});
+});

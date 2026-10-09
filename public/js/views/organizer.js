@@ -1,5 +1,5 @@
 // 主催者のトップ画面と、大会作成ウィザード（人数 → 名前 → ルール → 確認）
-import { h, toast, copyText, qrCode } from '../ui.js';
+import { h, toast, copyText, qrCode, errorText } from '../ui.js';
 import { DEFAULT_RULES, okaOf } from '../logic/scoring.js';
 import { makePrelimSchedule, TABLE_LABELS } from '../logic/seating.js';
 import { parseNames, cleanNames, fillWithGuests, isGuestName } from '../logic/names.js';
@@ -24,7 +24,7 @@ export function renderOrganizerHome(ctx) {
           'button',
           {
             class: 'btn primary big',
-            onClick: () => store.signInOrganizer().catch((e) => toast(`ログインできませんでした（${e.message}）`, 'error')),
+            onClick: () => store.signInOrganizer().catch((e) => toast(`ログインできませんでした。${errorText(e)}`, 'error')),
           },
           store.isDemo ? 'デモ主催者として始める' : 'Google でログイン',
         ),
@@ -63,7 +63,7 @@ export function renderOrganizerHome(ctx) {
         ),
       );
     })
-    .catch((e) => list.replaceChildren(h('p', { class: 'error-line' }, `読み込めませんでした（${e.message}）`)));
+    .catch((e) => list.replaceChildren(h('p', { class: 'error-line' }, `読み込めませんでした。${errorText(e)}`)));
 
   return view;
 }
@@ -109,9 +109,12 @@ export function renderWizard(ctx) {
     ),
   );
 
+  // 別のステップに進む・戻るときは、ページの一番上から見せる（同じステップの描き直しでは位置を保つ）
   const go = (step) => {
+    const changed = w.step !== step;
     w.step = step;
     ctx.rerender();
+    if (changed) window.scrollTo(0, 0);
   };
 
   if (w.step === 1) view.append(stepCount(w, go));
@@ -163,11 +166,11 @@ function stepCount(w, go) {
         class: 'btn primary big',
         onClick: () => {
           if (!Number.isInteger(w.count) || w.count < 4 || w.count % 4 !== 0) {
-            toast('人数は 4 の倍数にしてください', 'error');
+            toast('人数は 4 の倍数（8・12・16・20…）にしてください', 'error');
             return;
           }
           if (!w.name.trim()) {
-            toast('大会名を入れてください', 'error');
+            toast('大会名を入れてください（例 第11回大会）', 'error');
             return;
           }
           go(2);
@@ -186,7 +189,7 @@ function stepNames(w, go, ctx) {
     const before = w.names.length;
     w.names = cleanNames([...w.names, ...list]);
     const added = w.names.length - before;
-    toast(added ? `${added} 人追加しました` : '新しく追加される名前はありませんでした', added ? 'ok' : 'info');
+    toast(added ? `${added} 人追加しました` : 'どの名前もすでに登録されていました', added ? 'ok' : 'info');
     go(2);
   };
 
@@ -208,6 +211,7 @@ function stepNames(w, go, ctx) {
   section.append(
     h('h2', {}, '参加者の名前'),
     h('div', { class: `count-line ${countClass}` }, `${w.names.length} / ${w.count} 人`),
+    w.names.length !== w.count && h('p', { class: `count-hint ${w.names.length > w.count ? 'error-line' : 'muted'}` }, nameCountMessage(w)),
   );
 
   // 登録済みの名前
@@ -315,7 +319,7 @@ function stepNames(w, go, ctx) {
         onClick: () => {
           const names = parseNames(text.value, { splitOnSpace: spaceToggle.checked });
           if (!names.length) {
-            toast('名前が見つかりませんでした', 'error');
+            toast('名前が見つかりませんでした。名前を入れるか、ファイルを選んでから「追加」を押してください', 'error');
             return;
           }
           addNames(names);
@@ -336,7 +340,7 @@ function stepNames(w, go, ctx) {
           class: 'btn primary',
           onClick: () => {
             if (w.names.length !== w.count) {
-              toast(`名前を ${w.count} 人ぶん登録してください（いま ${w.names.length} 人）`, 'error');
+              toast(nameCountMessage(w), 'error');
               return;
             }
             go(3);
@@ -570,29 +574,44 @@ function stepRules(w, go, ctx) {
       if (list.length) ctx.rerender();
     }).catch(() => { w.pastTournaments = []; });
   }
+  // 前に作った大会のルールを使い回せるようにする（使わなくてもよいので、説明つきのたたんだ欄にする）
   if (w.pastTournaments?.length) {
-    const sel = h('select', { class: 'input' }, w.pastTournaments.map((t) => h('option', { value: t.id }, t.name)));
+    const sel = h(
+      'select',
+      { class: 'input', 'aria-label': 'ルールをコピーする大会' },
+      h('option', { value: '' }, '大会を選んでください'),
+      w.pastTournaments.map((t) => h('option', { value: t.id }, `${t.name}${t.date ? `（${t.date}）` : ''}`)),
+    );
     section.append(
-      h('div', { class: 'row' }, sel, h('button', { class: 'btn', onClick: () => {
-        const src = w.pastTournaments.find((t) => t.id === sel.value);
-        if (!src) return;
-        w.rules = { ...DEFAULT_RULES, ...src.rules, uma: [...(src.rules?.uma || DEFAULT_RULES.uma)] };
-        w.sections = (src.ruleSections || []).map((s) => ({ ...s }));
-        toast(`「${src.name}」のルールをコピーしました`, 'ok');
-        go(3);
-      } }, '前回からコピー')),
+      h(
+        'details',
+        { class: 'copy-rules' },
+        h('summary', {}, '前に作った大会のルールを使う（任意）'),
+        h('p', { class: 'muted' }, '選んだ大会の点数・お金・時間の設定とルール文を、この大会にコピーします。コピーしたあとも自由に直せます。'),
+        sel,
+        h('button', { class: 'btn', onClick: () => {
+          const src = w.pastTournaments.find((t) => t.id === sel.value);
+          if (!src) {
+            toast('コピーしたい大会を選んでください', 'error');
+            return;
+          }
+          // 回戦の数はこの大会で決めたものを残す（コピー元の回戦数に変わらないように）
+          const keep = { rounds: w.rules.rounds, hasFinal: w.rules.hasFinal };
+          w.rules = { ...DEFAULT_RULES, ...src.rules, uma: [...(src.rules?.uma || DEFAULT_RULES.uma)], ...keep };
+          w.sections = (src.ruleSections || []).map((s) => ({ ...s }));
+          toast(`「${src.name}」のルールをコピーしました`, 'ok');
+          go(3);
+        } }, 'このルールをコピー'),
+      ),
     );
   }
-
   section.append(rulesEditor(w.rules, w.sections));
   section.append(
     h('div', { class: 'row between sticky-actions' },
       h('button', { class: 'btn', onClick: () => go(2) }, '戻る'),
       h('button', { class: 'btn primary', onClick: () => {
-        const r = w.rules;
-        if (r.uma.reduce((a, b) => a + b, 0) !== 0) return toast('ウマの合計を 0 にしてください', 'error');
-        if (r.returnPoints < r.startPoints) return toast('返しは持ち点以上にしてください', 'error');
-        if (!(prelimOf(r) >= 1) || !Number.isInteger(prelimOf(r))) return toast('予選の回数を入れてください', 'error');
+        const problem = rulesProblem(w.rules);
+        if (problem) return toast(problem, 'error');
         go(4);
       } }, '次へ（確認）'),
     ),
@@ -612,7 +631,7 @@ function stepConfirm(w, go, ctx, store, state) {
       h('dt', {}, '人数'), h('dd', {}, `${w.count} 人（${w.count / 4} 卓）`),
       h('dt', {}, '回戦'), h('dd', {}, w.rules.hasFinal ? `予選 ${prelim} 回 ＋ 決勝 1 回` : `${prelim} 回`),
       h('dt', {}, '点数'), h('dd', {}, `${w.rules.startPoints.toLocaleString()} 点持ち ${w.rules.returnPoints.toLocaleString()} 点返し`),
-      h('dt', {}, 'ウマ・オカ'), h('dd', {}, `${w.rules.uma.join(' / ')}・オカ +${okaOf(w.rules)}`),
+      h('dt', {}, 'ウマ・オカ'), h('dd', {}, `${w.rules.uma.map((v) => (v > 0 ? `+${v}` : `${v}`)).join(' / ')}・オカ +${okaOf(w.rules)}`),
       h('dt', {}, 'お金'), h('dd', {}, `1000 点 ${w.rules.rate} 円・チップ ${w.rules.chipUnit} 円`),
       h('dt', {}, '場代'), h('dd', {}, w.rules.feeMode === 'prepaid' ? '事前に徴収済み' : '精算で割り勘'),
     ),
@@ -647,13 +666,34 @@ function stepConfirm(w, go, ctx, store, state) {
           toast('大会を作成しました', 'ok');
           ctx.navigate(`#/t/${id}/admin/share`);
         } catch (err) {
-          toast(`作成できませんでした（${err.message}）`, 'error');
+          toast(`作成できませんでした。${errorText(err)}`, 'error');
           e.currentTarget.disabled = false;
         }
       } }, 'この内容で大会を作る'),
     ),
   );
   return section;
+}
+
+// ルールの数値のチェック（大会作成と主催者の設定で共用）。問題があれば案内の文、なければ null
+export function rulesProblem(r) {
+  if (r.uma.reduce((a, b) => a + b, 0) !== 0) return 'ウマの合計を 0 にしてください';
+  if (!(r.startPoints > 0) || r.startPoints % 100 !== 0) return '持ち点は 100 点単位の数字で入れてください（例 25000）';
+  if (!(r.returnPoints >= r.startPoints) || r.returnPoints % 100 !== 0) return '返しは持ち点以上で、100 点単位の数字にしてください（例 30000）';
+  if (!(r.rate >= 0)) return 'レートは 0 円以上の数字で入れてください';
+  if (!(r.chipUnit >= 0)) return 'チップ 1 枚の金額は 0 円以上の数字で入れてください';
+  if (!(r.feeRoundUnit >= 1)) return '場代の切り上げ単位は 1 円以上で入れてください（例 100）';
+  if (!(r.timeLimitMin >= 1)) return '打ち切り時間は 1 分以上で入れてください';
+  const prelim = r.hasFinal ? r.rounds - 1 : r.rounds;
+  if (!(prelim >= 1) || !Number.isInteger(prelim)) return '予選の回数を入れてください';
+  return null;
+}
+
+// 名前の数が人数と合わないときの案内
+function nameCountMessage(w) {
+  const diff = w.names.length - w.count;
+  if (diff > 0) return `${diff} 人多いです。名前の「×」を押して ${w.count} 人にしてください`;
+  return `あと ${-diff} 人足りません。名前を追加するか、「仮の名前で埋める」を使ってください`;
 }
 
 // 参加者に共有する URL と QR
