@@ -558,3 +558,36 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 12px; font-
 .tl-rank { display: inline-block; min-width: 2.4em; color: var(--muted); font-weight: 700; }
 .table-line .tl-score { min-width: 3em; text-align: right; }
 .small-note { font-size: 13px; margin: 0 0 8px; }
+.badge.playing { background: var(--warn-soft); color: var(--warn); }
+
+/* 打ち切りタイマー */
+.timer { display: flex; flex-direction: column; align-items: center; margin: 6px 0 10px; }
+.timer .timer-left { font-size: 36px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.timer .timer-note { font-size: 14px; font-weight: 700; min-height: 1em; }
+.timer[data-state='warning'] .timer-left, .timer[data-state='warning'] .timer-note { color: var(--warn); }
+.timer[data-state='over'] .timer-left, .timer[data-state='over'] .timer-note { color: var(--minus); }
+.timer[data-state='paused'] .timer-left { color: var(--muted); }
+.timer.big .timer-left { font-size: clamp(64px, 14vw, 200px); }
+.timer.big .timer-note { font-size: clamp(18px, 3vw, 40px); }
+.timer[data-state='over'].big { animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
+
+/* 会場表示 */
+.screen { min-height: 100vh; padding: 16px 24px; background: var(--bg); }
+.screen-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.screen-header h1 { margin: 0; font-size: clamp(22px, 3vw, 40px); }
+.screen-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; margin-top: 12px; }
+@media (max-width: 800px) { .screen-grid { grid-template-columns: 1fr; } }
+.screen-main, .screen-side { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+.screen-round { font-size: clamp(28px, 4.5vw, 64px); font-weight: 800; text-align: center; }
+.screen-tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 12px; }
+.screen-table { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: clamp(16px, 1.6vw, 22px); }
+.screen-table-names { color: var(--muted); }
+.screen-qr { display: flex; flex-direction: column; align-items: center; }
+.screen-qr .qr { width: clamp(160px, 18vw, 260px); height: clamp(160px, 18vw, 260px); }
+.screen-qr-text { font-weight: 700; color: var(--muted); }
+.screen-rank h2 { font-size: clamp(18px, 2vw, 28px); margin: 16px 0 6px; }
+.screen-rank-list.two { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
+.screen-rank-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: clamp(16px, 1.6vw, 22px); }
+.screen-rank-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.screen-rank-total { font-weight: 800; font-variant-numeric: tabular-nums; }

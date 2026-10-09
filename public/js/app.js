@@ -10,6 +10,8 @@ import { deriveTournament } from './derive.js';
 import { renderOrganizerHome, renderWizard } from './views/organizer.js';
 import { renderTournament, meKey } from './views/tournament.js';
 import { renderAdmin } from './views/admin.js';
+import { renderScreen } from './views/screen.js';
+import { tickTimers } from './views/timerView.js';
 
 const root = document.getElementById('app');
 
@@ -41,6 +43,7 @@ function parseRoute() {
   if (parts[0] === 'new') return { name: 'new' };
   if (parts[0] === 't' && parts[1]) {
     if (parts[2] === 'admin') return { name: 'admin', tid: parts[1], tab: parts[3] || 'progress' };
+    if (parts[2] === 'screen') return { name: 'screen', tid: parts[1] };
     return { name: 'tournament', tid: parts[1], tab: parts[2] || 'home' };
   }
   return { name: 'home' };
@@ -133,6 +136,7 @@ function render() {
     if (!state.tLoaded) view = h('div', { class: 'page center' }, h('p', { class: 'muted' }, '大会を読み込み中…'));
     else if (!state.t) view = h('div', { class: 'page center' }, h('section', { class: 'card' }, h('p', {}, '大会が見つかりませんでした。URL を確認してください。')));
     else if (route.name === 'admin') view = renderAdmin(ctx, route.tab);
+    else if (route.name === 'screen') view = renderScreen(ctx);
     else view = renderTournament(ctx, route.tab);
   }
   mount(view);
@@ -145,7 +149,11 @@ function mount(view) {
   }
   root.replaceChildren(view);
   window.scrollTo(0, scrollY);
+  tickTimers(state);
 }
+
+// 残り時間の表示を 1 秒ごとに書き換える
+setInterval(() => tickTimers(state), 1000);
 
 // 画面（タブ）が変わったら一番上から表示する
 window.addEventListener('hashchange', () => {

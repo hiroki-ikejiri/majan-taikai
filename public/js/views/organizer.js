@@ -551,6 +551,8 @@ export function rulesEditor(rules, sections, { onChange, roundsLocked = false } 
     num('チップ 1 枚（円）', 'chipUnit'),
     h('div', { class: 'field' }, h('span', {}, '場代の扱い'), feeModeSwitch(rules, (mode) => { rules.feeMode = mode; onChange?.(); })),
     num('場代の切り上げ単位（円）', 'feeRoundUnit'),
+    h('h3', {}, '時間'),
+    num('1 回戦の打ち切り時間（分）', 'timeLimitMin', { min: '1', max: '180' }),
     h('h3', {}, 'ルール文'),
     h('p', { class: 'muted' }, '参加者の「ルール」画面にそのまま表示されます'),
     sectionList,

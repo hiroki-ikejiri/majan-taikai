@@ -52,6 +52,14 @@ export function deriveTournament(t, results) {
       : standings.map((s) => ({ playerId: s.id, place: s.rank, point: s.total, table: null, rankInTable: null }));
   }
 
+  // 卓の状態。done は入力済み、playing は今の回戦で対局中、upcoming はこれからの回戦、
+  // missing は今より前の回戦なのに結果がない（削除したときなど）
+  const tableStatus = (round, label) => {
+    if (resultOf(round, label)) return 'done';
+    if (currentRound === null || round < currentRound) return 'missing';
+    return round === currentRound ? 'playing' : 'upcoming';
+  };
+
   const tableOfPlayer = (round, playerId) => tablesOf(round)?.find((tb) => tb.players.includes(playerId)) || null;
   const nameOf = (id) => playerMap.get(id)?.name || '（不明）';
 
@@ -74,6 +82,7 @@ export function deriveTournament(t, results) {
     results: validResults,
     finalResult,
     tableOfPlayer,
+    tableStatus,
     nameOf,
     settled: t.status === 'settled',
   };

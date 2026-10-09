@@ -5,7 +5,8 @@ import { finalLineGap, placeLabel } from '../logic/standings.js';
 import { chipStatus, computeSettlement, feePerPerson, feeReady, isFeePrepaid } from '../logic/settlement.js';
 import { resultIdOf } from '../store/index.js';
 import { scoreForm, newDraft } from './scoreForm.js';
-import { resultTable, openResultEditor } from './resultEditor.js';
+import { resultTable, openResultEditor, statusBadge } from './resultEditor.js';
+import { timerDisplay } from './timerView.js';
 
 const FINAL_LINE = 4; // 決勝 A 卓に入れる人数
 
@@ -135,6 +136,8 @@ function renderHome(ctx, me) {
           ? [
               h('div', { class: 'hero-main' }, 'あなたは ', h('span', { class: 'table-label' }, `${table.label}卓`)),
               h('div', { class: 'members' }, table.players.map((pid) => h('span', { class: `member ${pid === me ? 'me' : ''}` }, d.nameOf(pid)))),
+              // 主催者がこの回戦のタイマーを開始していれば、残り時間を出す
+              !res && t.timer?.round === r && timerDisplay('small'),
               res
                 ? h('div', { class: 'status ok' }, '結果入力済み ', h('strong', { class: ptClass(row.perRound[r]?.point || 0) }, fmtPt(row.perRound[r]?.point || 0)))
                 : h('a', { class: 'btn primary big', href: `#/t/${t.id}/input` }, '結果を入力する'),
@@ -465,7 +468,7 @@ function renderTables(ctx, me) {
                 return h(
                   'div',
                   { class: `table-card ${tb.players.includes(me) ? 'mine' : ''} ${res ? 'done' : ''}` },
-                  h('div', { class: 'row between' }, h('strong', {}, `${tb.label}卓`), res ? h('span', { class: 'badge ok' }, '入力済') : h('span', { class: 'badge' }, '対局中')),
+                  h('div', { class: 'row between' }, h('strong', {}, `${tb.label}卓`), statusBadge(d, r, tb.label)),
                   lines.map((l) =>
                     h(
                       'div',
