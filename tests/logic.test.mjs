@@ -120,7 +120,27 @@ test('第 10 回のチップ枚数列は合計 0', () => {
 test('精算額 = pt × レート + チップ × 単価 − 場代', () => {
   const st = [{ id: 'a', name: 'A', rank: 1, total: 360 }];
   const [row] = computeSettlement(st, { a: 20 }, rules, 3000);
-  assert.equal(row.amount, 3600 + 10000 - 3000);
+  // 既定のレートは 1000 点（1pt）100 円。第 10 回集計表と同じく 360pt → 36,000 円
+  assert.equal(row.pointYen, 36000);
+  assert.equal(row.amount, 36000 + 10000 - 3000);
+});
+
+test('レート 50 円（点5）なら半分', () => {
+  const st = [{ id: 'a', name: 'A', rank: 1, total: 360 }];
+  const [row] = computeSettlement(st, {}, { ...rules, rate: 50 }, 0);
+  assert.equal(row.pointYen, 18000);
+});
+
+test('場代を事前徴収済みにすると精算に含めない', async () => {
+  const { feeReady } = await import('../public/js/logic/settlement.js');
+  const prepaid = { ...rules, feeMode: 'prepaid' };
+  const st = [{ id: 'a', name: 'A', rank: 1, total: 360 }];
+  const [row] = computeSettlement(st, { a: 20 }, prepaid, 48000);
+  assert.equal(row.fee, 0);
+  assert.equal(row.amount, 36000 + 10000);
+  assert.equal(feeReady(prepaid, null), true);
+  assert.equal(feeReady(rules, null), false);
+  assert.equal(feeReady(rules, 0), true);
 });
 
 test('マークダウン表の「名前」列を読む', () => {

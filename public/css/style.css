@@ -540,3 +540,8 @@ button.table-card { cursor: pointer; }
 .score-input.auto { border-color: var(--accent); background: var(--accent-soft); }
 .auto-badge { background: var(--accent-soft); color: var(--accent-strong); }
 .auto-badge[hidden] { display: none; }
+.table-divider { background: var(--surface-2); color: var(--muted); font-size: 13px; font-weight: 700; padding: 4px 14px; }
+.final-row { cursor: default; }
+.final-note { font-size: 13px; padding: 10px 14px 0; margin: 0; }
+.place-label { font-size: 12px; font-weight: 600; }
+.table-label.place { font-size: 40px; color: var(--band); }

@@ -44,3 +44,28 @@ export function finalLineGap(standings, playerId, lineSize = 4) {
   }
   return { inside: false, gap: standings[lineSize - 1].total - me.total };
 }
+
+// 最終結果（大会の順位）。決勝卓の順（A 卓、B 卓…）に、卓の中の着順で並べる。
+// A 卓の 1 着が優勝、2 着が準優勝…、B 卓の 1 着が 5 位…となる。
+// finalTables は [{ label, players }]、resultOf(label) はその卓の結果（seats は東南西北の順）
+export function computeFinalResult(finalTables, resultOf, rules, calcHanchan) {
+  const out = [];
+  finalTables.forEach((table, tableIndex) => {
+    const res = resultOf(table.label);
+    if (!res) return;
+    const { ranks, points } = calcHanchan(
+      res.seats.map((s) => s.score),
+      rules,
+    );
+    res.seats
+      .map((seat, i) => ({ playerId: seat.playerId, rankInTable: ranks[i], point: points[i], score: seat.score }))
+      .sort((a, b) => a.rankInTable - b.rankInTable)
+      .forEach((row) => {
+        out.push({ ...row, table: table.label, place: tableIndex * 4 + row.rankInTable });
+      });
+  });
+  return out.sort((a, b) => a.place - b.place);
+}
+
+// 最終結果の呼び名
+export const placeLabel = (place) => (place === 1 ? '優勝' : place === 2 ? '準優勝' : `${place}位`);

@@ -1,6 +1,6 @@
 // 大会データから、画面に出す値（順位・今の回戦・自分の卓など）を組み立てる
 import { DEFAULT_RULES, calcHanchan } from './logic/scoring.js';
-import { computeStandings } from './logic/standings.js';
+import { computeStandings, computeFinalResult } from './logic/standings.js';
 import { resultIdOf } from './store/index.js';
 
 export function deriveTournament(t, results) {
@@ -39,6 +39,14 @@ export function deriveTournament(t, results) {
   const validResults = results.filter((r) => tablesOf(r.round)?.some((tb) => tb.label === r.table));
   const standings = computeStandings(players, validResults, rules, calcHanchan);
 
+  // 最終結果（決勝ありで全回戦が終わったとき）。決勝なしならポイントランキングがそのまま最終結果
+  let finalResult = null;
+  if (allDone) {
+    finalResult = rules.hasFinal
+      ? computeFinalResult(tablesOf(rules.rounds), (label) => resultOf(rules.rounds, label), rules, calcHanchan)
+      : standings.map((s) => ({ playerId: s.id, place: s.rank, point: s.total, table: null, rankInTable: null }));
+  }
+
   const tableOfPlayer = (round, playerId) => tablesOf(round)?.find((tb) => tb.players.includes(playerId)) || null;
   const nameOf = (id) => playerMap.get(id)?.name || '（不明）';
 
@@ -56,6 +64,7 @@ export function deriveTournament(t, results) {
     allDone,
     prelimDone,
     standings,
+    finalResult,
     tableOfPlayer,
     nameOf,
     settled: t.status === 'settled',
