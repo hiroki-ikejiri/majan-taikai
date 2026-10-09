@@ -282,6 +282,9 @@ function exportCard(ctx) {
   );
 }
 
+// チップ一覧の入れ物。全員そろったあとは「チップ枚数を見る・直す」の中にたたむ
+const chipTableWrap = (folded, table) => (folded ? h('details', {}, h('summary', {}, 'チップ枚数を見る・直す'), table) : table);
+
 // ===== 精算（主催者） =====
 function renderAdminSettle(ctx) {
   const { state, store } = ctx;
@@ -327,8 +330,9 @@ function renderAdminSettle(ctx) {
       { class: 'card' },
       h('h2', {}, 'チップ枚数'),
       h('div', { class: 'row between' }, h('span', {}, `入力済み ${d.players.length - status.missing.length} / ${d.players.length} 人`), h('span', { class: `badge ${status.total === 0 ? 'ok' : 'warn'}` }, `合計 ${fmtPt(status.total)} 枚`)),
-      h('p', { class: 'muted' }, '参加者が入力できないときは、ここで代わりに入れられます'),
-      h(
+      h('p', { class: 'muted' }, status.ready ? '全員の入力がそろいました（合計 0 枚）' : '参加者が入力できないときは、ここで代わりに入れられます'),
+      // 全員そろったら一覧はたたんでおく（直したいときだけ開く）
+      chipTableWrap(status.ready, h(
         'table',
         { class: 'settle-table' },
         d.players.map((p) =>
@@ -357,7 +361,7 @@ function renderAdminSettle(ctx) {
             ),
           ),
         ),
-      ),
+      )),
     ),
     h(
       'section',

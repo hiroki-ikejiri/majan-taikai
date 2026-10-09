@@ -473,6 +473,15 @@ test.describe('精算', () => {
     await expect(page.locator('.toast.ok')).toHaveText('チップ枚数を保存しました');
     await expect(page.getByRole('heading', { name: '精算額', exact: true })).toBeVisible();
     await expect(page.getByText('1 人 6,300 円')).toBeVisible();
+    // 全員そろったらチップの入力状況は出さない
+    await expect(page.getByRole('heading', { name: 'チップの入力状況' })).toHaveCount(0);
+    // 自分のチップ枚数は 1 行に小さくなり、「直す」で入力欄が開く
+    await expect(page.locator('.my-chip-compact')).toContainText('あなたのチップ -2 枚');
+    await expect(page.locator('.chip-count')).toHaveCount(0);
+    await page.getByRole('button', { name: '直す' }).click();
+    await expect(page.locator('.chip-count')).toHaveText('-2');
+    await page.getByRole('button', { name: /保存する/ }).click();
+    await expect(page.locator('.my-chip-compact')).toBeVisible();
 
     // 合計は「場代の合計（切り上げ分を含む）」だけマイナスになる
     const amounts = await page.locator('.settle-table td:last-child').evaluateAll((els) =>
@@ -514,6 +523,11 @@ test.describe('精算', () => {
 
     await page.goto(`/#/t/${t.id}/admin/settle`);
     await expect(page.getByPlaceholder('例 48000')).toHaveCount(0);
+    // 主催者のチップ一覧は、全員そろったらたたんである
+    await expect(page.getByText('全員の入力がそろいました（合計 0 枚）')).toBeVisible();
+    await expect(page.locator('.settle-table input').first()).toBeHidden();
+    await page.getByText('チップ枚数を見る・直す').click();
+    await expect(page.locator('.settle-table input').first()).toBeVisible();
     await expect(page.getByRole('button', { name: '精算を確定する' })).toBeEnabled();
 
     // 主催者が「精算で割り勘」に戻すと場代の入力が必要になる

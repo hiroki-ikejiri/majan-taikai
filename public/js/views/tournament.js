@@ -517,44 +517,60 @@ function renderSettle(ctx, me) {
     state.chipDraft = v;
     draftLabel.textContent = fmtPt(v).replace('±0', '0');
   };
-  wrap.append(
-    h(
-      'section',
-      { class: 'card center' },
-      h('h2', {}, 'あなたのチップ枚数'),
-      d.settled
-        ? h('p', {}, `${fmtPt(myChip ?? 0)} 枚（確定済み）`)
-        : [
-            h(
-              'div',
-              { class: 'stepper-row' },
-              h('button', { class: 'btn round', onClick: () => setDraft((state.chipDraft ?? myChip ?? 0) - 1) }, '−'),
-              draftLabel,
-              h('button', { class: 'btn round', onClick: () => setDraft((state.chipDraft ?? myChip ?? 0) + 1) }, '＋'),
-            ),
-            h('p', { class: 'muted' }, '増えた枚数はプラス、減った枚数はマイナス'),
-            h(
-              'button',
-              {
-                class: 'btn primary big',
-                onClick: async () => {
-                  try {
-                    await store.setChip(t.id, me, state.chipDraft ?? myChip ?? 0);
-                    state.chipDraft = null;
-                    toast('チップ枚数を保存しました', 'ok');
-                  } catch (e) {
-                    toast(`保存できませんでした（${e.message}）`, 'error');
-                  }
-                },
-              },
-              myChip === null ? '保存する' : `保存する（いま ${fmtPt(myChip)} 枚）`,
-            ),
-          ],
-    ),
-  );
+  // 全員そろった後（または精算確定後）は 1 行に小さくまとめる。「直す」を押したときだけ入力欄を開く
+  const compact = d.settled || (status.ready && !state.chipEditOpen);
+  if (compact) {
+    wrap.append(
+      h(
+        'section',
+        { class: 'card my-chip-compact' },
+        h('div', { class: 'row between' },
+          h('span', {}, 'あなたのチップ ', h('strong', {}, `${fmtPt(myChip ?? 0).replace('±0', '0')} 枚`)),
+          d.settled
+            ? h('span', { class: 'badge' }, '確定済み')
+            : h('button', { class: 'btn small', onClick: () => { state.chipEditOpen = true; ctx.rerender(); } }, '直す'),
+        ),
+      ),
+    );
+  } else {
+    wrap.append(
+      h(
+        'section',
+        { class: 'card center' },
+        h('h2', {}, 'あなたのチップ枚数'),
+        h(
+          'div',
+          { class: 'stepper-row' },
+          h('button', { class: 'btn round', onClick: () => setDraft((state.chipDraft ?? myChip ?? 0) - 1) }, '−'),
+          draftLabel,
+          h('button', { class: 'btn round', onClick: () => setDraft((state.chipDraft ?? myChip ?? 0) + 1) }, '＋'),
+        ),
+        h('p', { class: 'muted' }, '増えた枚数はプラス、減った枚数はマイナス'),
+        h(
+          'button',
+          {
+            class: 'btn primary big',
+            onClick: async () => {
+              try {
+                await store.setChip(t.id, me, state.chipDraft ?? myChip ?? 0);
+                state.chipDraft = null;
+                state.chipEditOpen = false;
+                toast('チップ枚数を保存しました', 'ok');
+                // 枚数が変わらなかったときはデータの更新が来ないので、ここで描き直す
+                ctx.rerender();
+              } catch (e) {
+                toast(`保存できませんでした（${e.message}）`, 'error');
+              }
+            },
+          },
+          myChip === null ? '保存する' : `保存する（いま ${fmtPt(myChip)} 枚）`,
+        ),
+      ),
+    );
+  }
 
-  // チップの集まり具合
-  wrap.append(
+  // チップの集まり具合（全員が入れて合計 0 枚になったら、もう出さない）
+  if (!status.ready) wrap.append(
     h(
       'section',
       { class: 'card' },
