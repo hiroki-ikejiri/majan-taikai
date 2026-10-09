@@ -4,7 +4,7 @@
 //   #/new                    大会作成
 //   #/t/{id}[/{tab}]         参加者画面（home / input / rank / settle / rules）
 //   #/t/{id}/admin[/{tab}]   主催者画面（progress / settings / share / settle）
-import { h, toast } from './ui.js';
+import { h, toast, errorText } from './ui.js';
 import { loadStore } from './store/index.js';
 import { deriveTournament } from './derive.js';
 import { renderOrganizerHome, renderWizard } from './views/organizer.js';
@@ -23,6 +23,7 @@ const state = {
   tLoaded: false,
   results: [],
   chips: {},
+  names: {}, // 参加者が自分で直した名前 { playerId: 名前 }
   d: null,
   me: null,
   drafts: {},
@@ -87,14 +88,15 @@ function watchTournament(tid) {
   if (state.tid === tid) return;
   unsubs.forEach((u) => u());
   unsubs = [];
-  Object.assign(state, { tid, t: null, tLoaded: false, results: [], chips: {}, d: null, drafts: {}, inputSel: null, chipDraft: null, adminEdit: null });
+  Object.assign(state, { tid, t: null, tLoaded: false, results: [], chips: {}, names: {}, d: null, drafts: {}, inputSel: null, chipDraft: null, adminEdit: null });
   try {
     state.me = localStorage.getItem(meKey(tid));
   } catch {
     state.me = null;
   }
+  // 参加者が自分で直した名前（names）があれば、大会の名前より優先して使う
   const refreshDerived = () => {
-    state.d = state.t ? deriveTournament(state.t, state.results) : null;
+    state.d = state.t ? deriveTournament(withNameOverrides(state.t, state.names), state.results) : null;
     rerender();
   };
   unsubs.push(
@@ -107,12 +109,19 @@ function watchTournament(tid) {
       state.results = results;
       refreshDerived();
     }),
+    store.watchNames(tid, (names) => {
+      state.names = names;
+      refreshDerived();
+    }),
     store.watchChips(tid, (chips) => {
       state.chips = chips;
       rerender();
     }),
   );
 }
+
+const withNameOverrides = (t, names) =>
+  names && Object.keys(names).length ? { ...t, players: t.players.map((p) => (names[p.id] ? { ...p, name: names[p.id] } : p)) } : t;
 
 function render() {
   const route = parseRoute();
@@ -128,7 +137,7 @@ function render() {
     if (state.tid !== route.tid) {
       // 参加者はログイン操作なしで匿名ログインしてから読む
       if (!state.user) {
-        store.ensureGuest().catch((e) => toast(`接続できませんでした（${e.message}）`, 'error'));
+        store.ensureGuest().catch((e) => toast(`接続できませんでした。${errorText(e)}`, 'error'));
         view = h('div', { class: 'page center' }, h('p', { class: 'muted' }, '接続中…'));
         return mount(view);
       }
@@ -160,6 +169,8 @@ setInterval(() => tickTimers(state), 1000);
 window.addEventListener('hashchange', () => {
   state.chipDraft = null;
   state.chipEditOpen = false;
+  // 結果入力で選んでいた回戦・卓は、画面を移ったら忘れる（次に開いたときは今の自分の卓から）
+  state.inputSel = null;
   render();
   window.scrollTo(0, 0);
 });
@@ -168,7 +179,7 @@ window.addEventListener('hashchange', () => {
   try {
     store = await loadStore();
   } catch (e) {
-    root.replaceChildren(h('div', { class: 'page' }, h('section', { class: 'card' }, h('p', {}, `起動できませんでした（${e.message}）`))));
+    root.replaceChildren(h('div', { class: 'page' }, h('section', { class: 'card' }, h('p', {}, `起動できませんでした。${errorText(e)}`))));
     return;
   }
   store.onAuthChange((user) => {

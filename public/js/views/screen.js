@@ -4,10 +4,12 @@
 import { h, fmtPt, ptClass, qrCode } from '../ui.js';
 import { shareUrlOf } from './organizer.js';
 import { statusBadge } from './resultEditor.js';
-import { timerDisplay, enableSound, isSoundEnabled } from './timerView.js';
+import { timerDisplay, enableSound, disableSound, isSoundEnabled } from './timerView.js';
 import { timerControls } from './admin.js';
 
 const FINAL_LINE = 4;
+// 会場表示で名前を出すのは上位だけにする（下位の人がさらされないように、それ以外は順位とポイントだけ）
+const NAMED_RANKS = 8;
 
 const roundTitle = (d, r) => (d.rules.hasFinal && r === d.rules.rounds ? `第${r}回戦（決勝）` : `第${r}回戦`);
 
@@ -47,13 +49,14 @@ export function renderScreen(ctx) {
   const n = d.standings.length;
   const cols = n > 24 ? 3 : n > 12 ? 2 : 1;
   const perCol = Math.ceil(n / cols);
-  const showLine = d.rules.hasFinal && !d.prelimDone && n > FINAL_LINE;
+  const noResults = d.results.length === 0;
+  const showLine = d.rules.hasFinal && !d.prelimDone && n > FINAL_LINE && !noResults;
   const rankRow = (row, index) =>
     h(
       'div',
       { class: `screen-rank-row ${showLine && index === FINAL_LINE - 1 ? 'line-after' : ''}` },
       h('span', { class: `rank-badge r${row.rank}` }, row.rank),
-      h('span', { class: 'screen-rank-name' }, row.name),
+      h('span', { class: `screen-rank-name ${index < NAMED_RANKS ? '' : 'hidden-name'}` }, index < NAMED_RANKS ? row.name : ''),
       h('span', { class: `screen-rank-total ${ptClass(row.total)}` }, fmtPt(row.total)),
     );
   const rankList = h(
@@ -65,18 +68,22 @@ export function renderScreen(ctx) {
   );
 
   const url = shareUrlOf(t.id);
+  // 音のオン・オフ（押すたびに切り替わる）
+  const soundLabel = () => (isSoundEnabled() ? '音 オン' : '音 オフ');
   const soundBtn = h(
     'button',
     {
-      class: 'btn small',
+      class: `btn small ${isSoundEnabled() ? 'primary' : ''}`,
+      'aria-pressed': isSoundEnabled() ? 'true' : 'false',
       onClick: (e) => {
-        enableSound();
-        e.currentTarget.textContent = '音あり';
-        e.currentTarget.disabled = true;
+        if (isSoundEnabled()) disableSound();
+        else enableSound();
+        e.currentTarget.textContent = soundLabel();
+        e.currentTarget.classList.toggle('primary', isSoundEnabled());
+        e.currentTarget.setAttribute('aria-pressed', isSoundEnabled() ? 'true' : 'false');
       },
-      disabled: isSoundEnabled(),
     },
-    isSoundEnabled() ? '音あり' : '音を有効にする',
+    soundLabel(),
   );
 
   return h(
@@ -115,7 +122,13 @@ export function renderScreen(ctx) {
         ),
         tableBox,
       ),
-      h('section', { class: 'screen-side' }, h('h2', {}, 'ポイントランキング'), rankList),
+      h(
+        'section',
+        { class: 'screen-side' },
+        h('h2', {}, 'ポイント順位'),
+        noResults ? h('p', { class: 'screen-empty' }, '第1回戦の結果が入ると、ここに順位が出ます') : rankList,
+        !noResults && n > NAMED_RANKS && h('p', { class: 'muted screen-rank-note' }, `名前は上位 ${NAMED_RANKS} 人まで表示しています`),
+      ),
     ),
   );
 }

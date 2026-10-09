@@ -1,5 +1,5 @@
 // 参加者の画面（名前選び・ホーム・結果入力・順位・精算・ルール）
-import { h, fmtPt, ptClass, fmtYen, toast } from '../ui.js';
+import { h, fmtPt, ptClass, fmtYen, toast, errorText, modal } from '../ui.js';
 import { okaOf } from '../logic/scoring.js';
 import { finalLineGap, placeLabel } from '../logic/standings.js';
 import { compareNames } from '../logic/names.js';
@@ -65,7 +65,8 @@ function renderPickName(ctx) {
       h(
         'div',
         { class: 'name-grid' },
-        [...t.players]
+        // 参加者が自分で直した名前も反映した一覧
+        [...state.d.players]
           .sort((a, b) => compareNames(a.name, b.name))
           .map((p) =>
             h(
@@ -80,6 +81,7 @@ function renderPickName(ctx) {
                   }
                   state.me = p.id;
                   ctx.rerender();
+                  window.scrollTo(0, 0);
                 },
               },
               p.name,
@@ -109,7 +111,7 @@ function renderHome(ctx, me) {
         myFinal
           ? h('div', { class: 'hero-main' }, 'あなたは ', h('span', { class: `table-label place p${myFinal.place}` }, placeLabel(myFinal.place)))
           : h('div', { class: 'hero-main' }, 'おつかれさま！'),
-        row && h('p', { class: 'muted center' }, `ポイントランキングは ${row.rank} 位（${fmtPt(row.total)}）`),
+        row && h('p', { class: 'muted center' }, `ポイント順位は ${row.rank} 位（${fmtPt(row.total)}pt）`),
         h('a', { class: 'btn big', href: `#/t/${t.id}/rank` }, '最終結果・ポイントを見る'),
         h('a', { class: 'btn primary big', href: `#/t/${t.id}/settle` }, 'チップ入力・精算へ'),
       ),
@@ -164,14 +166,18 @@ function renderHome(ctx, me) {
           h('span', { class: 'stat-label' }, 'トップとの差'),
           row.diffToTop === 0
             ? h('span', { class: 'stat-value small top' }, 'トップ！')
-            : h('span', { class: 'stat-value' }, `${row.diffToTop}`),
+            : h('span', { class: 'stat-value' }, `${row.diffToTop}`, h('small', {}, 'pt')),
         ),
         gap &&
           h(
             'div',
             { class: `stat wide ${gap.inside ? 'inside' : 'outside'}` },
             h('span', { class: 'stat-label' }, '決勝 A 卓ライン'),
-            h('span', { class: 'stat-value small' }, gap.inside ? `圏内（5 位と ${gap.gap}pt 差）` : `あと ${gap.gap}pt`),
+            h(
+              'span',
+              { class: 'stat-value small' },
+              gap.gap === 0 ? '同点（同点のときは名前順で決まります）' : gap.inside ? `圏内（5 位と ${gap.gap}pt 差）` : `あと ${gap.gap}pt`,
+            ),
           ),
         h('a', { class: 'btn big', href: `#/t/${t.id}/rank` }, '全体順位を見る'),
       ),
@@ -195,7 +201,7 @@ function renderHome(ctx, me) {
             { class: r === d.currentRound ? 'current' : '' },
             h('td', {}, roundTitle(d, r)),
             h('td', {}, table ? `${table.label}卓` : d.tablesOf(r) ? '休み' : '未定'),
-            h('td', { class: 'num' }, pr ? `${pr.rank}位` : ''),
+            h('td', { class: 'num' }, pr ? `${pr.rank}着` : ''),
             h('td', { class: `num ${pr ? ptClass(pr.point) : ''}` }, pr ? fmtPt(pr.point) : ''),
           );
         }),
@@ -221,9 +227,51 @@ function renderHome(ctx, me) {
         },
         '名前を選び直す',
       ),
+      !d.settled && h('button', { class: 'btn link', onClick: () => openNameEditor(ctx, me) }, '自分の名前を直す'),
     ),
   );
   return wrap;
+}
+
+// 自分の名前を直す。大会の設定とは別の場所に保存し、主催者が「設定」で直したらそちらが優先される
+function openNameEditor(ctx, me) {
+  const { state, store } = ctx;
+  const t = state.t;
+  const d = state.d;
+  const original = t.players.find((p) => p.id === me)?.name || '';
+  const input = h('input', { class: 'input', value: d.nameOf(me), maxlength: '20', 'aria-label': '新しい名前' });
+  modal({
+    title: '自分の名前を直す',
+    body: h('div', {}, h('p', { class: 'muted' }, '順位・卓割り・会場表示など、名前が出るところすべてに反映されます。'), input),
+    actions: [
+      { label: 'やめる' },
+      {
+        label: '保存する',
+        kind: 'primary',
+        onClick: async () => {
+          const name = input.value.replace(/\s+/g, ' ').trim();
+          if (!name) {
+            toast('名前を入れてください', 'error');
+            return false;
+          }
+          if (d.players.some((p) => p.id !== me && p.name === name)) {
+            toast(`「${name}」はほかの人が使っています。少し変えてください（例 ${name}2）`, 'error');
+            return false;
+          }
+          try {
+            // 主催者が付けた名前に戻したときは、直した名前を消しておく
+            await store.setName(t.id, me, name === original ? null : name);
+            toast('名前を直しました', 'ok');
+          } catch (e) {
+            toast(`保存できませんでした。${errorText(e)}`, 'error');
+            return false;
+          }
+          return true;
+        },
+      },
+    ],
+  });
+  setTimeout(() => input.focus(), 0);
 }
 
 // ===== 結果入力 =====
@@ -236,9 +284,12 @@ function renderInput(ctx, me) {
   if (d.settled) return h('section', { class: 'card' }, h('p', {}, '精算が確定したため、入力は締め切りました。'));
 
   // 入力する回戦と卓（既定は今の回戦の自分の卓）
-  let round = sel?.round ?? d.currentRound;
+  // 選べるのは今の回戦まで（先の回戦にまちがって入力しないように）。決勝待ちのあいだは予選の回戦だけ
+  const lastSelectable = d.allDone ? d.rules.rounds : d.waitingFinal ? d.currentRound - 1 : d.currentRound;
+  const selectable = Array.from({ length: lastSelectable || 0 }, (_, i) => i + 1).filter((r) => d.tablesOf(r));
+  let round = sel?.round ?? (d.waitingFinal || d.allDone ? selectable[selectable.length - 1] : d.currentRound);
   if (!round || !d.tablesOf(round)) {
-    return h('section', { class: 'card' }, h('p', {}, d.allDone ? '全回戦の入力が終わりました。' : '入力できる卓がありません。'));
+    return h('section', { class: 'card' }, h('p', {}, '入力できる卓がありません。'));
   }
   const tables = d.tablesOf(round);
   let table = (sel?.label && tables.find((tb) => tb.label === sel.label)) || d.tableOfPlayer(round, me) || tables[0];
@@ -255,9 +306,7 @@ function renderInput(ctx, me) {
           ctx.rerender();
         },
       },
-      Array.from({ length: d.rules.rounds }, (_, i) => i + 1)
-        .filter((r) => d.tablesOf(r))
-        .map((r) => h('option', { value: r, selected: r === round }, roundTitle(d, r))),
+      selectable.map((r) => h('option', { value: r, selected: r === round }, roundTitle(d, r))),
     ),
     h(
       'select',
@@ -285,7 +334,6 @@ function renderInput(ctx, me) {
   section.append(
     scoreForm({
       draft: state.drafts[rid],
-      tablePlayers: table.players,
       nameOf: d.nameOf,
       rules: d.rules,
       onSubmit: async (seats) => {
@@ -296,8 +344,14 @@ function renderInput(ctx, me) {
           toast('保存しました', 'ok');
           ctx.navigate(`#/t/${t.id}/home`);
         } catch (e) {
-          if (e.message === 'exists') toast('この卓はすでに別の人が入力済みです', 'error');
-          else toast(`保存できませんでした。電波を確認してもう一度（${e.message}）`, 'error');
+          toast(
+            e.message === 'exists'
+              ? 'この卓は、ほかの人が先に入力していました。入力済みの結果を確認してください'
+              : String(e.code || '').includes('permission-denied')
+                ? '入力が締め切られたため保存できませんでした。主催者に伝えてください'
+                : `保存できませんでした。${errorText(e)}`,
+            'error',
+          );
           ctx.rerender();
           return false;
         }
@@ -327,13 +381,17 @@ function renderRank(ctx, me) {
             ctx.rerender();
           },
         },
-        { final: '最終結果', rank: 'ポイント', tables: '卓・結果' }[m],
+        { final: '最終結果', rank: 'ポイント順位', tables: '卓・結果' }[m],
       ),
     ),
   );
 
   if (mode === 'tables') return h('div', {}, seg, renderTables(ctx, me));
   if (mode === 'final') return h('div', {}, seg, renderFinalResult(d, me));
+  // まだ 1 卓も結果がないときは、全員 1 位の一覧を出さずに案内だけにする
+  if (d.results.length === 0) {
+    return h('div', {}, seg, h('section', { class: 'card' }, h('p', { class: 'muted' }, 'まだ結果がありません。第1回戦の結果が入ると、ここに順位が出ます。')));
+  }
 
   // どの時点の順位を見るか（'now' は今。数字はその回戦が終わった時点）
   const roundShort = (r) => (d.rules.hasFinal && r === d.rules.rounds ? '決勝' : `予選${r}回戦`);
@@ -384,7 +442,7 @@ function renderRank(ctx, me) {
         h('span', { class: `rank-badge r${row.rank}` }, row.rank),
         h('span', { class: 'rank-name' }, row.name),
         h('span', { class: `rank-total ${ptClass(row.total)}` }, fmtPt(row.total)),
-        h('span', { class: 'rank-diff muted' }, i === 0 ? '' : `${row.diffToTop}`),
+        h('span', { class: 'rank-diff muted' }, i === 0 || row.diffToTop === 0 ? '' : `${row.diffToTop}pt`),
       ),
     );
     if (open) {
@@ -394,7 +452,7 @@ function renderRank(ctx, me) {
           { class: 'rank-detail' },
           Array.from({ length: asOfRound ?? d.rules.rounds }, (_, k) => k + 1).map((r) => {
             const pr = row.perRound[r];
-            return h('span', { class: 'chip-mini' }, `${r}回 `, pr ? h('b', { class: ptClass(pr.point) }, fmtPt(pr.point)) : '—');
+            return h('span', { class: 'chip-mini' }, `${r}回戦 `, pr ? h('b', { class: ptClass(pr.point) }, fmtPt(pr.point)) : '—');
           }),
         ),
       );
@@ -433,7 +491,7 @@ function renderFinalResult(d, me) {
     'section',
     { class: 'card flush' },
     d.rules.hasFinal && h('p', { class: 'muted final-note' }, '決勝の A 卓の 1 着が優勝、2 着が準優勝…、B 卓の 1 着が 5 位…です。お金の精算はポイントで計算します。'),
-    h('div', { class: 'rank-head muted' }, h('span', {}, '順位'), h('span', {}, '名前'), h('span', {}, '合計pt'), h('span', {}, 'pt順位')),
+    h('div', { class: 'rank-head muted' }, h('span', {}, '順位'), h('span', {}, '名前'), h('span', {}, '合計pt'), h('span', {}, 'ポイント順位')),
     d.rules.hasFinal && h('div', { class: 'table-divider' }, `${d.finalResult[0]?.table || 'A'}卓`),
     list,
   );
@@ -560,7 +618,7 @@ function renderSettle(ctx, me) {
                 // 枚数が変わらなかったときはデータの更新が来ないので、ここで描き直す
                 ctx.rerender();
               } catch (e) {
-                toast(`保存できませんでした（${e.message}）`, 'error');
+                toast(`保存できませんでした。${errorText(e)}`, 'error');
               }
             },
           },
@@ -669,7 +727,8 @@ function renderRules(ctx) {
         { class: 'rule-list' },
         h('li', {}, `${r.startPoints.toLocaleString()} 点持ち ${r.returnPoints.toLocaleString()} 点返し（百の位は五捨六入）`),
         h('li', {}, `ウマ ${r.uma.map(fmtPt).join(' / ')}、オカ +${okaOf(r)}`),
-        h('li', {}, '同点は起家に近い方が上'),
+        h('li', {}, '卓の中で同点のときは、結果を入力するときに上の着順にする人を選ぶ'),
+        r.hasFinal && h('li', {}, '決勝卓の境目（4 位と 5 位など）でポイントが同点のときは、名前順で決まります'),
         h('li', {}, r.hasFinal ? `予選 ${r.rounds - 1} 回 ＋ 決勝 1 回（決勝は成績順の卓）` : `${r.rounds} 回戦`),
         h('li', {}, `1000 点（1pt）${r.rate} 円、チップ 1 枚 ${r.chipUnit} 円`),
         h('li', {}, isFeePrepaid(r) ? '場代は事前に徴収済み（精算には含めません）' : '場代は精算時に人数で割り勘'),

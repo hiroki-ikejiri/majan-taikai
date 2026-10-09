@@ -1,16 +1,15 @@
 // 1 卓ぶんの結果の表示と、主催者による入力・修正・削除（参加者画面と主催者画面で共用）
-import { h, fmtPt, ptClass, fmtScore, toast, modal } from '../ui.js';
+import { h, fmtPt, ptClass, fmtScore, toast, modal, errorText } from '../ui.js';
 import { resultIdOf } from '../store/index.js';
 import { scoreForm, newDraft } from './scoreForm.js';
 
-const WINDS = ['東', '南', '西', '北'];
 const roundTitle = (d, r) => (d.rules.hasFinal && r === d.rules.rounds ? `第${r}回戦（決勝）` : `第${r}回戦`);
 
 // 1 卓ぶんの結果表（順位順）
 export function resultTable(d, res) {
   const st = new Map(d.standings.map((s) => [s.id, s]));
   const rows = res.seats
-    .map((s, i) => ({ ...s, wind: WINDS[i], info: st.get(s.playerId)?.perRound[res.round] }))
+    .map((s) => ({ ...s, info: st.get(s.playerId)?.perRound[res.round] }))
     .sort((a, b) => (a.info?.rank || 9) - (b.info?.rank || 9));
   return h(
     'table',
@@ -19,8 +18,8 @@ export function resultTable(d, res) {
       h(
         'tr',
         {},
-        h('td', {}, r.info ? `${r.info.rank}位` : ''),
-        h('td', {}, `${r.wind} ${d.nameOf(r.playerId)}`),
+        h('td', {}, r.info ? `${r.info.rank}着` : ''),
+        h('td', {}, d.nameOf(r.playerId)),
         h('td', { class: 'num' }, fmtScore(r.score)),
         h('td', { class: `num ${ptClass(r.info?.point || 0)}` }, r.info ? fmtPt(r.info.point) : ''),
       ),
@@ -44,7 +43,6 @@ export function openResultEditor(ctx, round, table) {
     existing && h('div', {}, h('h3', {}, '現在の結果'), resultTable(d, existing), h('h3', {}, '修正する')),
     scoreForm({
       draft,
-      tablePlayers: table.players,
       nameOf: d.nameOf,
       rules: d.rules,
       submitLabel: existing ? '確認して上書き' : '確認して保存',
@@ -54,7 +52,7 @@ export function openResultEditor(ctx, round, table) {
           toast('保存しました', 'ok');
           closeModal?.();
         } catch (e) {
-          toast(`保存できませんでした（${e.message}）`, 'error');
+          toast(`保存できませんでした。${errorText(e)}`, 'error');
           return false;
         }
         return true;
@@ -72,7 +70,7 @@ export function openResultEditor(ctx, round, table) {
           await store.deleteResult(t.id, rid);
           toast('削除しました', 'ok');
         } catch (e) {
-          toast(`削除できませんでした（${e.message}）`, 'error');
+          toast(`削除できませんでした。${errorText(e)}`, 'error');
           return false;
         }
         return true;

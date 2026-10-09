@@ -35,22 +35,23 @@ export function roundedBase(score, returnPoints) {
 }
 
 // 素点の入力チェック。問題があればメッセージの配列を返す
-export function validateScores(scores, rules) {
+// labels は各行の呼び方（例 「田中さん」）。省略すると「1 人目」…
+export function validateScores(scores, rules, labels = ['1 人目', '2 人目', '3 人目', '4 人目']) {
   const errors = [];
   if (scores.length !== 4) {
     errors.push('4 人分の点数が必要です');
     return errors;
   }
   scores.forEach((s, i) => {
-    if (!Number.isFinite(s)) errors.push(`${'東南西北'[i]}家の点数が未入力です`);
-    else if (s % 100 !== 0) errors.push(`${'東南西北'[i]}家の点数は 100 点単位で入力してください`);
+    if (!Number.isFinite(s)) errors.push(`${labels[i]}の点数が未入力です`);
+    else if (s % 100 !== 0) errors.push(`${labels[i]}の点数は 100 点単位で入力してください`);
   });
   if (errors.length) return errors;
   const total = scores.reduce((a, b) => a + b, 0);
   const expected = expectedTotal(rules);
   if (total !== expected) {
     const gap = total - expected;
-    errors.push(`合計が ${total.toLocaleString()} 点です（${gap > 0 ? '+' : ''}${gap.toLocaleString()} 点ずれています）`);
+    errors.push(`4 人の合計が ${total.toLocaleString()} 点です。${expected.toLocaleString()} 点になるように直してください（${gap > 0 ? '+' : ''}${gap.toLocaleString()} 点ずれています）`);
   }
   return errors;
 }

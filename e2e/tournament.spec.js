@@ -22,7 +22,8 @@ test.describe('大会作成', () => {
 
     // 人数が足りないと先へ進めない
     await page.getByRole('button', { name: '次へ（ルール）' }).click();
-    await expect(page.locator('.toast.error')).toContainText('8 人ぶん');
+    await expect(page.locator('.toast.error')).toHaveText('あと 2 人足りません。名前を追加するか、「仮の名前で埋める」を使ってください');
+    await expect(page.locator('.count-hint')).toHaveText('あと 2 人足りません。名前を追加するか、「仮の名前で埋める」を使ってください');
 
     // 手入力で 2 人（重複は無視される）
     await page.locator('textarea').first().fill('"伊藤", \'渡辺\'、池尻');
@@ -47,7 +48,7 @@ test.describe('大会作成', () => {
     await page.getByRole('button', { name: '次へ（確認）' }).click();
 
     await expect(page.getByText('予選 6 回 ＋ 決勝 1 回')).toBeVisible();
-    await expect(page.getByText('20 / 10 / -10 / -20')).toBeVisible();
+    await expect(page.getByText('+20 / +10 / -10 / -20')).toBeVisible();
     await expect(page.getByText('1000 点 50 円・チップ 500 円')).toBeVisible();
     await expect(page.getByText('事前に徴収済み')).toBeVisible();
     await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
@@ -167,6 +168,70 @@ test.describe('大会作成', () => {
     await expect(page.locator('.count-line')).toHaveText('7 / 8 人');
   });
 
+  test('名前が多すぎるときは、何人多いかと直し方を出す', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'デモ主催者として始める' }).click();
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('多すぎ大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+    await page.locator('textarea').first().fill('a、b、c、d、e、f、g、h、i');
+    await page.getByRole('button', { name: '追加', exact: true }).click();
+    await expect(page.locator('.count-hint')).toHaveText('1 人多いです。名前の「×」を押して 8 人にしてください');
+    await page.getByRole('button', { name: '次へ（ルール）' }).click();
+    await expect(page.locator('.toast.error')).toHaveText('1 人多いです。名前の「×」を押して 8 人にしてください');
+    await page.locator('.name-chip', { hasText: 'i' }).click();
+    await expect(page.locator('.count-hint')).toHaveCount(0);
+  });
+
+  test('次のステップに進むと、ページの一番上から表示する', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'デモ主催者として始める' }).click();
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('スクロール大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+    await page.getByRole('button', { name: /仮の名前/ }).click();
+    // ページの下のほうまでスクロールしてから押す
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await page.getByRole('button', { name: '次へ（ルール）' }).click();
+    await expect(page.getByRole('heading', { name: 'ルール', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
+  test('前に作った大会のルールは、説明つきのたたんだ欄から選んでコピーする', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'デモ主催者として始める' }).click();
+    // 1 つ目の大会（レート 50 円）を作る
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('前の大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+    await page.getByRole('button', { name: /仮の名前/ }).click();
+    await page.getByRole('button', { name: '次へ（ルール）' }).click();
+    await expect(page.getByText('前に作った大会のルールを使う（任意）')).toHaveCount(0);
+    await page.getByRole('button', { name: '50円（点5）' }).click();
+    await page.getByRole('button', { name: '次へ（確認）' }).click();
+    await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
+
+    // 2 つ目の大会では、たたんだ欄から選ぶ
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('次の大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+    await page.getByRole('button', { name: /仮の名前/ }).click();
+    await page.getByRole('button', { name: '次へ（ルール）' }).click();
+    await expect(page.getByLabel('ルールをコピーする大会')).toBeHidden();
+    await page.getByText('前に作った大会のルールを使う（任意）').click();
+    await page.getByRole('button', { name: 'このルールをコピー' }).click();
+    await expect(page.locator('.toast.error')).toHaveText('コピーしたい大会を選んでください');
+    await page.getByLabel('ルールをコピーする大会').selectOption({ index: 1 });
+    await page.getByRole('button', { name: 'このルールをコピー' }).click();
+    await expect(page.locator('.toast.ok').last()).toHaveText('「前の大会」のルールをコピーしました');
+    await expect(page.getByLabel('レート（円）')).toHaveValue('50');
+  });
+
   test('4 の倍数でない人数は受け付けない', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'デモ主催者として始める' }).click();
@@ -269,6 +334,96 @@ test.describe('参加者', () => {
     await expect(page.locator('.name-btn')).toHaveText(names);
   });
 
+  test('結果がないうちは順位を出さず、結果入力は今の回戦までしか選べない', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/rank`);
+    await expect(page.getByText('まだ結果がありません。第1回戦の結果が入ると、ここに順位が出ます。')).toBeVisible();
+    await expect(page.locator('.rank-row')).toHaveCount(0);
+    await page.goto(`/#/t/${t.id}/input`);
+    // 第1回戦しか選べない（先の回戦にまちがって入力しない）
+    await expect(page.locator('.picker select').first().locator('option')).toHaveText(['第1回戦']);
+  });
+
+  test('結果入力は卓の 4 人の名前が並び、同じ人を選ぶ欄はない', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    const myTable = t.data.schedule['1'].find((tb) => tb.players.includes('p1'));
+    const names = myTable.players.map((id) => NAMES8[Number(id.slice(1)) - 1]);
+    await expect(page.locator('.seat-name')).toHaveText(names);
+    await expect(page.locator('select.seat-select')).toHaveCount(0);
+    await expect(page.getByText(/東|南家|西家|北家/)).toHaveCount(0);
+  });
+
+  test('2 人が同点なら、上の着順にする人を選ぶまで保存できない', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    const myTable = t.data.schedule['1'].find((tb) => tb.players.includes('p1'));
+    const names = myTable.players.map((id) => NAMES8[Number(id.slice(1)) - 1]);
+    await fillScores(page, [30000, 30000, 25000, 15000]);
+    await expect(page.locator('.tie-question')).toContainText(`${names[0]}さん・${names[1]}さんが同点です`);
+    await expect(page.getByRole('button', { name: '確認して保存' })).toBeDisabled();
+    await page.getByRole('button', { name: `${names[1]} を上に` }).click();
+    await expect(page.locator('.tie-question')).toHaveCount(0);
+    await expect(page.locator('.rank-preview')).toHaveText(['2着', '1着', '3着', '4着']);
+    await page.getByRole('button', { name: '確認して保存' }).click();
+    await expect(page.locator('.modal .confirm-table tr').first()).toContainText(`1着${names[1]}`);
+    await page.getByRole('button', { name: '保存する' }).click();
+    await expect(page.locator('.toast.ok')).toHaveText('保存しました');
+  });
+
+  test('3 人が同点なら、上から順番にタップして着順を決める', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    const myTable = t.data.schedule['1'].find((tb) => tb.players.includes('p1'));
+    const names = myTable.players.map((id) => NAMES8[Number(id.slice(1)) - 1]);
+    await fillScores(page, [30000, 30000, 30000, 10000]);
+    await expect(page.locator('.tie-question')).toContainText('3 人が同点です。上の着順から順番にタップしてください（いま 1 番目）');
+    await expect(page.locator('.score-form')).not.toContainText('null');
+    await page.getByRole('button', { name: `1 番目は ${names[2]}` }).click();
+    await expect(page.locator('.tie-question')).toContainText('いま 2 番目');
+    await page.getByRole('button', { name: `2 番目は ${names[0]}` }).click();
+    await expect(page.locator('.tie-question')).toHaveCount(0);
+    await expect(page.locator('.rank-preview')).toHaveText(['2着', '3着', '1着', '4着']);
+    // 選び直しもできる
+    await page.getByRole('button', { name: '同点の順番を選び直す' }).click();
+    await expect(page.locator('.tie-question')).toContainText('いま 1 番目');
+  });
+
+  test('参加者は自分の名前を直せて、主催者が設定で直すと主催者の名前が優先される', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, results: resultsFor(t, [1]), organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}`);
+    await expect(page.locator('.title-block .muted')).toHaveText('池尻 さん');
+
+    // ほかの人と同じ名前にはできない
+    await page.getByRole('button', { name: '自分の名前を直す' }).click();
+    await page.getByLabel('新しい名前').fill('山田');
+    await page.getByRole('button', { name: '保存する' }).click();
+    await expect(page.locator('.toast.error')).toContainText('「山田」はほかの人が使っています');
+
+    await page.getByLabel('新しい名前').fill('池尻ひろき');
+    await page.getByRole('button', { name: '保存する' }).click();
+    await expect(page.locator('.toast.ok')).toHaveText('名前を直しました');
+    await expect(page.locator('.title-block .muted')).toHaveText('池尻ひろき さん');
+    // 順位にも反映される
+    await page.goto(`/#/t/${t.id}/rank`);
+    await expect(page.locator('.rank-name', { hasText: '池尻ひろき' })).toBeVisible();
+
+    // 主催者の設定にも直した名前が出て、保存すると主催者の名前が正になる
+    await page.goto(`/#/t/${t.id}/admin/settings`);
+    const first = page.locator('.card').filter({ hasText: '参加者の名前' }).locator('input').first();
+    await expect(first).toHaveValue('池尻ひろき');
+    await first.fill('池尻H');
+    await page.getByRole('button', { name: '設定を保存' }).click();
+    await expect(page.locator('.toast.ok').last()).toContainText('設定を保存しました');
+    await page.goto(`/#/t/${t.id}`);
+    await expect(page.locator('.title-block .muted')).toHaveText('池尻H さん');
+  });
+
   test('ルール画面に設定とルール文が出る', async ({ page }) => {
     const t = buildTournament();
     await seed(page, { tournament: t, me: 'p1' });
@@ -311,7 +466,7 @@ test.describe('主催者', () => {
     await page.goto(`/#/t/${t.id}`);
     await expect(page.locator('.hero-sub')).toHaveText('全回戦 終了 ・ 最終結果');
     await expect(page.locator('.table-label.place')).toHaveText('優勝');
-    await expect(page.getByText(/ポイントランキングは \d+ 位/)).toBeVisible();
+    await expect(page.getByText(/ポイント順位は \d+ 位/)).toBeVisible();
 
     await page.getByRole('link', { name: '最終結果・ポイントを見る' }).click();
     // 最初に「最終結果」が開く
@@ -324,7 +479,7 @@ test.describe('主催者', () => {
     await expect(page.locator('.table-divider')).toHaveText(['A卓', 'B卓']);
 
     // ポイントランキングに切り替えられる。大会終了時点では決勝 A 卓の帯は出さない
-    await page.getByRole('button', { name: 'ポイント' }).click();
+    await page.getByRole('button', { name: 'ポイント順位' }).click();
     await expect(page.locator('.rank-row')).toHaveCount(8);
     await expect(page.getByLabel('いつの時点の順位か')).toHaveValue('now');
     await expect(page.getByLabel('いつの時点の順位か').locator('option').first()).toHaveText('現在（大会終了時）');
@@ -392,7 +547,9 @@ test.describe('主催者', () => {
     await expect(page.locator('.timer.big .timer-left')).toHaveText('50:00');
     await expect(page.locator('.screen-table')).toHaveCount(2);
     await expect(page.locator('.screen-qr .qr svg')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.screen-rank-row')).toHaveCount(8);
+    // まだ結果がないので、順位の代わりに案内を出す
+    await expect(page.locator('.screen-empty')).toHaveText('第1回戦の結果が入ると、ここに順位が出ます');
+    await expect(page.locator('.screen-rank-row')).toHaveCount(0);
     // 主催者なら会場表示からもタイマーを操作できる
     await expect(page.getByRole('button', { name: '一時停止' })).toBeVisible();
 
@@ -419,6 +576,17 @@ test.describe('主催者', () => {
     await seed(page, { tournament: t, results: resultsFor(t, [1]), me: 'p1' });
     await page.goto(`/#/t/${t.id}/screen`);
     await expect(page.locator('.screen-rank-row')).toHaveCount(32);
+    // 名前は上位 8 人まで。それより下は順位とポイントだけ
+    await expect(page.locator('.screen-rank-name:not(.hidden-name)')).toHaveCount(8);
+    await expect(page.locator('.screen-rank-name.hidden-name')).toHaveCount(24);
+    await expect(page.locator('.screen-rank-name.hidden-name').first()).toHaveText('');
+    // 音はボタンで何度でもオン・オフできる
+    const sound = page.getByRole('button', { name: /^音 / });
+    await expect(sound).toHaveText('音 オフ');
+    await sound.click();
+    await expect(sound).toHaveText('音 オン');
+    await sound.click();
+    await expect(sound).toHaveText('音 オフ');
     // スクロールせずに全員の順位が見える
     expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
     await expect(page.locator('.screen-rank-row').last()).toBeInViewport();
@@ -426,11 +594,37 @@ test.describe('主催者', () => {
     await context.close();
   });
 
+  test('前の回戦のタイマーは、会場表示に残らない', async ({ page }) => {
+    const t = buildTournament();
+    // 第1回戦のタイマーが残ったまま、第1回戦の結果がそろって第2回戦になった
+    t.data.timer = { round: 1, startedAt: Date.now() - 60 * 60000, pausedAt: null, pausedTotal: 0 };
+    await seed(page, { tournament: t, results: resultsFor(t, [1]), organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/screen`);
+    await expect(page.locator('.screen-round')).toHaveText('第2回戦');
+    await expect(page.locator('.timer.big')).toHaveAttribute('data-state', 'idle');
+    await expect(page.locator('.timer.big .timer-note')).toHaveText('開始前');
+    await expect(page.getByRole('button', { name: '第2回戦 開始' })).toBeVisible();
+  });
+
+  test('タイマーのリセットは確認してから開始前に戻す', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/admin`);
+    await page.getByRole('button', { name: '第1回戦 開始' }).click();
+    page.once('dialog', (dlg) => dlg.accept());
+    await page.getByRole('button', { name: 'リセット' }).click();
+    await expect(page.locator('.toast.ok').last()).toHaveText('タイマーを開始前の状態に戻しました');
+    await expect(page.getByRole('button', { name: '第1回戦 開始' })).toBeVisible();
+  });
+
   test('タイマーは一時停止・再開できる', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-09T13:00:00+09:00') });
     const t = buildTournament();
     await seed(page, { tournament: t, organizer: true, me: 'p1' });
     await page.goto(`/#/t/${t.id}/admin`);
+    await expect(page.getByRole('button', { name: '第1回戦 開始' })).toBeVisible();
+    // 画面が出てから時計を止め、runFor で進めた分だけ進むようにする（テストの重さで秒がずれないように）
+    await page.clock.pauseAt(new Date('2026-10-09T13:00:05+09:00'));
     await page.getByRole('button', { name: '第1回戦 開始' }).click();
     await page.clock.runFor('10:00');
     await page.getByRole('button', { name: '一時停止' }).click();
