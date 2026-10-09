@@ -10,6 +10,7 @@ export const DEFAULT_RULES = Object.freeze({
   rate: 100, // 1000 点（1pt）あたりの金額（円）。50 なら点5、100 なら点10
   chipUnit: 500, // チップ 1 枚の金額（円）
   feeRoundUnit: 100, // 場代の割り勘の切り上げ単位（円）
+  timeLimitMin: 50, // 1 回戦（半荘）の打ち切り時間（分）
   feeMode: 'split', // 場代の扱い。split は精算で割り勘、prepaid は事前に徴収済み（精算に含めない）
 });
 

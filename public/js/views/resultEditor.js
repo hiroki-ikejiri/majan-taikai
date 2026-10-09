@@ -82,3 +82,15 @@ export function openResultEditor(ctx, round, table) {
   closeModal = modal({ title: `${roundTitle(d, round)} ${table.label}卓`, body, actions });
 }
 
+
+// 卓の状態のバッジ（入力済 / 対局中 / これから / 未入力）
+const STATUS_BADGE = {
+  done: ['ok', '入力済'],
+  playing: ['playing', '対局中'],
+  upcoming: ['', 'これから'],
+  missing: ['warn', '未入力'],
+};
+export function statusBadge(d, round, label) {
+  const [cls, text] = STATUS_BADGE[d.tableStatus(round, label)];
+  return h('span', { class: `badge ${cls}` }, text);
+}

@@ -140,3 +140,17 @@ test('途中の時点の順位（第 N 回戦終了時）を出せる', () => {
   // 「現在」は 3 回戦の入力済みの卓も含む
   assert.equal(d.standings.reduce((n, r) => n + r.games, 0), 8 * 2 + 4);
 });
+
+test('卓の状態は 入力済 / 対局中 / これから / 未入力 に分かれる', () => {
+  const t = buildTournament();
+  const results = toList(resultsFor(t, [1, 2])).filter((r) => !(r.round === 2 && r.table === 'B'));
+  const d = deriveTournament(t.data, results);
+  assert.equal(d.tableStatus(1, 'A'), 'done');
+  assert.equal(d.tableStatus(2, 'A'), 'done');
+  assert.equal(d.tableStatus(2, 'B'), 'playing'); // 今の回戦
+  assert.equal(d.tableStatus(3, 'A'), 'upcoming'); // まだ先の回戦
+  // 前の回戦の結果を消すと、そこが今の回戦になる
+  const d2 = deriveTournament(t.data, results.filter((r) => !(r.round === 1 && r.table === 'A')));
+  assert.equal(d2.tableStatus(1, 'A'), 'playing');
+  assert.equal(d2.tableStatus(2, 'B'), 'upcoming');
+});
