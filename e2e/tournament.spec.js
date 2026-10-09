@@ -351,6 +351,10 @@ test.describe('主催者', () => {
     await page.getByRole('button', { name: '保存する' }).click();
     await expect(page.locator('.toast.ok')).toHaveText('保存しました');
     await expect(tableA.locator('.table-line').first()).toContainText(`1着${a[3]}`);
+    // 入力済みの 1 回戦、今の 2 回戦、これからの 3 回戦で表示が分かれる
+    await expect(round1.locator('.badge').first()).toHaveText('入力済');
+    await expect(page.locator('.card').filter({ hasText: '第2回戦' }).locator('.badge').first()).toHaveText('対局中');
+    await expect(page.locator('.card').filter({ hasText: '第3回戦' }).locator('.badge').first()).toHaveText('これから');
     // まだ結果のない 2 回戦の卓は「入力」ボタン
     await expect(page.locator('.card').filter({ hasText: '第2回戦' }).getByRole('button', { name: '入力' }).first()).toBeVisible();
   });
@@ -362,6 +366,54 @@ test.describe('主催者', () => {
     await page.getByRole('button', { name: '卓・結果' }).click();
     await expect(page.locator('.tl-pt').first()).toBeVisible();
     await expect(page.getByRole('button', { name: '修正' })).toHaveCount(0);
+  });
+
+  test('主催者が回戦のタイマーを開始すると、会場表示と参加者のホームに残り時間が出る', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-09T13:00:00+09:00') });
+    const t = buildTournament();
+    await seed(page, { tournament: t, organizer: true, me: 'p1' });
+
+    await page.goto(`/#/t/${t.id}/admin`);
+    await expect(page.getByRole('heading', { name: '第1回戦の時間' })).toBeVisible();
+    await page.getByRole('button', { name: '第1回戦 開始' }).click();
+    await expect(page.locator('.js-timer .timer-left')).toHaveText('50:00');
+
+    // 会場表示
+    await page.goto(`/#/t/${t.id}/screen`);
+    await expect(page.locator('.screen-round')).toHaveText('第1回戦');
+    await expect(page.locator('.timer.big .timer-left')).toHaveText('50:00');
+    await expect(page.locator('.screen-table')).toHaveCount(2);
+    await expect(page.locator('.screen-qr .qr svg')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.screen-rank-row')).toHaveCount(8);
+
+    // 45 分たつと予告、50 分で時間切れ
+    // （QR の読み込みを待つ間も時計は進むので、秒までは決め打ちしない）
+    await page.clock.runFor('45:00');
+    await expect(page.locator('.timer.big .timer-left')).toHaveText(/^[45]:\d\d$/);
+    await expect(page.locator('.timer.big')).toHaveAttribute('data-state', 'warning');
+    await page.clock.runFor('05:00');
+    await expect(page.locator('.timer.big')).toHaveAttribute('data-state', 'over');
+    await expect(page.locator('.timer.big .timer-note')).toHaveText('時間です。現局で終了');
+
+    // 参加者のホームにも残り時間（時間切れ）が出る
+    await page.goto(`/#/t/${t.id}`);
+    await expect(page.locator('.hero .js-timer')).toHaveAttribute('data-state', 'over');
+  });
+
+  test('タイマーは一時停止・再開できる', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-09T13:00:00+09:00') });
+    const t = buildTournament();
+    await seed(page, { tournament: t, organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/admin`);
+    await page.getByRole('button', { name: '第1回戦 開始' }).click();
+    await page.clock.runFor('10:00');
+    await page.getByRole('button', { name: '一時停止' }).click();
+    await expect(page.locator('.js-timer')).toHaveAttribute('data-state', 'paused');
+    await page.clock.runFor('10:00');
+    await expect(page.locator('.js-timer .timer-left')).toHaveText('40:00');
+    await page.getByRole('button', { name: '再開' }).click();
+    await page.clock.runFor('01:00');
+    await expect(page.locator('.js-timer .timer-left')).toHaveText('39:00');
   });
 
   test('主催者は結果を修正でき、ポイントが再計算される', async ({ page }) => {

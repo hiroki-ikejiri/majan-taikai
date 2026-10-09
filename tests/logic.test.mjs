@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DEFAULT_RULES, calcHanchan, roundedBase, validateScores, okaOf } from '../public/js/logic/scoring.js';
-import { makePrelimSchedule, makeFinalTables, countMeets, seededRandom } from '../public/js/logic/seating.js';
+import { makePrelimSchedule, makeFinalTables, countMeets, countSeats, seededRandom } from '../public/js/logic/seating.js';
 import { computeStandings, finalLineGap } from '../public/js/logic/standings.js';
 import { feePerPerson, chipStatus, computeSettlement } from '../public/js/logic/settlement.js';
 import { parseNamesFromMarkdownTable } from '../public/js/logic/names.js';
@@ -64,6 +64,25 @@ test('予選の卓割りは全員を毎回 1 回ずつ入れ、同卓の重複�
   // 16 人・6 回なら、同じ 2 人の同卓は最大 2 回までに収まる
   const maxMeet = Math.max(...countMeets(schedule).values());
   assert.ok(maxMeet <= 2, `最大同卓回数 ${maxMeet}`);
+});
+
+const maxSeat = (schedule) => Math.max(...[...countSeats(schedule).values()].flat().filter(Boolean));
+
+test('同じ卓（A 卓・B 卓…）に座り続けないように組む', () => {
+  for (let seed = 1; seed <= 5; seed += 1) {
+    const random = seededRandom(seed);
+    const ids = (n) => Array.from({ length: n }, (_, i) => `p${i}`);
+    // 8 人・予選 4 回：同じ卓は 3 回まで（4 回とも同じ卓の人を出さない）、同じ人とは 2 回まで
+    const s8 = makePrelimSchedule(ids(8), 4, { random });
+    assert.ok(maxSeat(s8) <= 3, `8人 同じ卓 ${maxSeat(s8)} 回`);
+    assert.ok(Math.max(...countMeets(s8).values()) <= 2);
+    // 16 人・予選 6 回：同じ卓は 3 回まで、同じ人とは 2 回まで
+    const s16 = makePrelimSchedule(ids(16), 6, { random });
+    assert.ok(maxSeat(s16) <= 3, `16人 同じ卓 ${maxSeat(s16)} 回`);
+    assert.ok(Math.max(...countMeets(s16).values()) <= 2);
+    // 20 人・予選 6 回：同じ卓は 2 回まで
+    assert.ok(maxSeat(makePrelimSchedule(ids(20), 6, { random })) <= 2);
+  }
 });
 
 test('4 の倍数でない人数はエラー', () => {

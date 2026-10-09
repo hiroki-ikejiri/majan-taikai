@@ -4,7 +4,9 @@ import { buildResultMarkdown, resultFileName } from '../logic/exportMarkdown.js'
 import { DEFAULT_RULES } from '../logic/scoring.js';
 import { makeFinalTables, TABLE_LABELS } from '../logic/seating.js';
 import { chipStatus, feeReady, isFeePrepaid } from '../logic/settlement.js';
-import { openResultEditor } from './resultEditor.js';
+import { openResultEditor, statusBadge } from './resultEditor.js';
+import { timerDisplay } from './timerView.js';
+import { startTimer, pauseTimer, resumeTimer } from '../logic/timer.js';
 import { rulesEditor, shareCard, feeModeSwitch } from './organizer.js';
 
 const roundTitle = (d, r) => (d.rules.hasFinal && r === d.rules.rounds ? `第${r}回戦（決勝）` : `第${r}回戦`);
@@ -49,6 +51,8 @@ function renderProgress(ctx) {
   const t = state.t;
   const d = state.d;
   const wrap = h('div', {});
+
+  wrap.append(timerCard(ctx));
 
   if (d.allDone) {
     wrap.append(
@@ -116,7 +120,7 @@ function renderProgress(ctx) {
             return h(
               'button',
               { class: `table-card ${res ? 'done' : ''}`, onClick: () => openResultEditor(ctx, r, tb) },
-              h('div', { class: 'row between' }, h('strong', {}, `${tb.label}卓`), res ? h('span', { class: 'badge ok' }, '入力済') : h('span', { class: 'badge warn' }, '未入力')),
+              h('div', { class: 'row between' }, h('strong', {}, `${tb.label}卓`), statusBadge(d, r, tb.label)),
               tb.players.map((pid) => {
                 const pr = d.standings.find((s) => s.id === pid)?.perRound[r];
                 return h('div', { class: 'row between' }, h('span', {}, d.nameOf(pid)), pr ? h('span', {}, fmtPt(pr.point)) : null);
@@ -185,6 +189,67 @@ function renderSettings(ctx) {
     h('div', { class: 'sticky-actions' }, h('button', { class: 'btn primary big', onClick: save }, '設定を保存')),
   );
 }
+
+// ===== 打ち切りタイマー =====
+// 主催者が回戦ごとに開始する。開始時刻を大会データに保存するので、会場表示や参加者のスマホにも同じ残り時間が出る
+function timerCard(ctx) {
+  const { state, store } = ctx;
+  const t = state.t;
+  const d = state.d;
+  const timer = t.timer || null;
+  const r = d.currentRound;
+  const save = async (next, message) => {
+    try {
+      await store.updateTournament(t.id, { timer: next });
+      if (message) toast(message, 'ok');
+    } catch (e) {
+      toast(`保存できませんでした（${e.message}）`, 'error');
+    }
+  };
+  const isCurrent = timer && timer.round === r;
+
+  let buttons;
+  if (d.allDone) {
+    buttons = [];
+  } else if (!r || d.waitingFinal) {
+    buttons = [h('p', { class: 'muted' }, '決勝の卓を確定すると開始できます')];
+  } else if (!isCurrent) {
+    buttons = [h('button', { class: 'btn primary big', onClick: () => save(startTimer(r, Date.now()), `${roundTitle(d, r)}を開始しました`) }, `${roundTitle(d, r)} 開始`)];
+  } else {
+    buttons = [
+      h(
+        'div',
+        { class: 'row' },
+        timer.pausedAt
+          ? h('button', { class: 'btn primary', onClick: () => save(resumeTimer(timer, Date.now()), '再開しました') }, '再開')
+          : h('button', { class: 'btn', onClick: () => save(pauseTimer(timer, Date.now()), '一時停止しました') }, '一時停止'),
+        h('button', {
+          class: 'btn',
+          onClick: () => {
+            if (window.confirm('タイマーを最初からやり直しますか？')) save(startTimer(r, Date.now()), 'やり直しました');
+          },
+        }, '最初から'),
+        h('button', {
+          class: 'btn link danger',
+          onClick: () => {
+            if (window.confirm('タイマーを止めて開始前に戻しますか？')) save(null, '止めました');
+          },
+        }, '止める'),
+      ),
+    ];
+  }
+
+  return h(
+    'section',
+    { class: 'card timer-card' },
+    h('div', { class: 'row between' }, h('h2', {}, d.allDone ? '全回戦 終了' : r ? `${roundTitle(d, r)}の時間` : '時間'), h('a', { class: 'btn small', href: `#/t/${t.id}/screen`, target: '_blank', rel: 'noopener' }, '会場表示を開く')),
+    !d.allDone && isCurrent && timerDisplay('small'),
+    !d.allDone && !isCurrent && h('p', { class: 'muted' }, `打ち切り ${timeLimitLabel(d)}。全卓がそろったら開始を押してください`),
+    buttons,
+  );
+}
+
+const timeLimitLabel = (d) => `${d.rules.timeLimitMin || 50} 分`;
 
 // ===== 結果の書き出し =====
 // 集計表と同じ並びのマークダウンを作り、ダウンロードかコピーで渡す（Claude に渡せば集計表に転記できる）
