@@ -115,6 +115,21 @@ export function createFirebaseStore(config) {
       else await setDoc(ref, { count });
     },
 
+    watchNames(id, cb) {
+      return onSnapshot(collection(db, 'tournaments', id, 'names'), (snap) => {
+        const names = {};
+        snap.docs.forEach((d) => {
+          names[d.id] = d.data().name;
+        });
+        cb(names);
+      });
+    },
+    async setName(id, playerId, name) {
+      const ref = doc(db, 'tournaments', id, 'names', playerId);
+      if (name === null) await deleteDoc(ref);
+      else await setDoc(ref, { name });
+    },
+
     async getPastPlayers(uid) {
       const snap = await getDoc(doc(db, 'organizers', uid));
       return snap.exists() ? snap.data().players || {} : {};

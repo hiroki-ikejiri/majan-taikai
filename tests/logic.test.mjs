@@ -49,7 +49,7 @@ test('合計 10 万点でないとエラー', () => {
   assert.deepEqual(validateScores([34000, 33000, 21000, 12000], rules), []);
   const errors = validateScores([34000, 33000, 21000, 11000], rules);
   assert.equal(errors.length, 1);
-  assert.match(errors[0], /-1,000 点ずれています/);
+  assert.match(errors[0], /100,000 点になるように直してください（-1,000 点ずれています）/);
   assert.equal(validateScores([34050, 32950, 21000, 12000], rules).length, 2);
 });
 
@@ -226,4 +226,13 @@ test('名前は数字を数として並べる（ゲスト2 → ゲスト10）', 
   const { compareNames } = await import('../public/js/logic/names.js');
   const names = ['ゲスト10', 'ゲスト2', 'ゲスト1', 'ゲスト20', '池尻', 'ゲスト3'];
   assert.deepEqual([...names].sort(compareNames).filter((n) => n.startsWith('ゲスト')), ['ゲスト1', 'ゲスト2', 'ゲスト3', 'ゲスト10', 'ゲスト20']);
+});
+
+test('エラーは日本語の案内にする', async () => {
+  const { errorText } = await import('../public/js/ui.js');
+  assert.match(errorText({ code: 'permission-denied' }), /権限がありません/);
+  assert.match(errorText({ code: 'unavailable' }), /通信できませんでした/);
+  assert.match(errorText({ code: 'auth/popup-blocked' }), /ポップアップを許可/);
+  assert.match(errorText(new Error('exists')), /すでに入力済み/);
+  assert.match(errorText(new Error('boom')), /思わぬエラー.*boom/);
 });

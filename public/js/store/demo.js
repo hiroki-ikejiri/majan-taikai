@@ -111,6 +111,17 @@ export function createDemoStore() {
       save();
     },
 
+    watchNames(id, cb) {
+      return watch(() => clone((db.names || {})[id] || {}), cb);
+    },
+    async setName(id, playerId, name) {
+      db.names = db.names || {};
+      db.names[id] = db.names[id] || {};
+      if (name === null) delete db.names[id][playerId];
+      else db.names[id][playerId] = name;
+      save();
+    },
+
     async getPastPlayers(uid) {
       return clone(db.organizers[uid]?.players || {});
     },

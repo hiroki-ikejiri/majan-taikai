@@ -29,7 +29,8 @@ let lastKey = null;
 export function tickTimers(state, now = Date.now()) {
   const t = state.t;
   if (!t) return;
-  const timer = t.timer || null;
+  // 前の回戦のタイマーが残っていても、今の回戦のものでなければ「開始前」として扱う
+  const timer = t.timer && t.timer.round === state.d?.currentRound ? t.timer : null;
   const limit = timeLimitOf({ ...(t.rules || {}) });
   const s = timerState(timer, limit, now);
   const left = remainingMs(timer, limit, now);
@@ -59,6 +60,10 @@ export function enableSound() {
   audio.resume?.();
   soundEnabled = true;
   playChime(1);
+}
+
+export function disableSound() {
+  soundEnabled = false;
 }
 
 export const isSoundEnabled = () => soundEnabled;

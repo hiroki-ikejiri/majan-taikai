@@ -74,3 +74,51 @@ test('主催者の修正（既存の結果）では自動入力しない', () =>
   type(d, 0, '410');
   assert.equal(d.hundreds[3], '100');
 });
+
+import { rankingOrder, unresolvedTies, tieGroups, seatsForSave } from '../public/js/views/scoreForm.js';
+
+function filled(scores) {
+  const d = newDraft(['a', 'b', 'c', 'd']);
+  scores.forEach((s, i) => {
+    d.hundreds[i] = String(Math.abs(s) / 100);
+    d.negative[i] = s < 0;
+  });
+  return d;
+}
+
+test('同点がなければ、そのまま点数の高い順', () => {
+  const d = filled([20000, 40000, 30000, 10000]);
+  assert.deepEqual(rankingOrder(d), [1, 2, 0, 3]);
+  assert.deepEqual(unresolvedTies(d), []);
+  assert.deepEqual(seatsForSave(d).map((s) => s.playerId), ['b', 'c', 'a', 'd']);
+});
+
+test('2 人同点は、上にする人を選ぶまで決まらない', () => {
+  const d = filled([30000, 30000, 25000, 15000]);
+  assert.deepEqual(unresolvedTies(d), [[0, 1]]);
+  d.tiePref.push('b');
+  assert.deepEqual(unresolvedTies(d), []);
+  assert.deepEqual(seatsForSave(d).map((s) => s.playerId), ['b', 'a', 'c', 'd']);
+});
+
+test('3 人同点は、上から順に 2 人選べば決まる', () => {
+  const d = filled([25000, 25000, 25000, 25000 - 0]);
+  // 4 人とも同点
+  assert.equal(tieGroups(d)[0].all.length, 4);
+  const d3 = filled([30000, 30000, 30000, 10000]);
+  assert.deepEqual(unresolvedTies(d3), [[0, 1, 2]]);
+  d3.tiePref.push('c');
+  assert.deepEqual(unresolvedTies(d3), [[0, 1]]);
+  d3.tiePref.push('a');
+  assert.deepEqual(unresolvedTies(d3), []);
+  assert.deepEqual(seatsForSave(d3).map((s) => s.playerId), ['c', 'a', 'b', 'd']);
+});
+
+test('保存済みの結果を直すときは、保存した順番を同点の決め手にする', () => {
+  const d = newDraft(['a', 'b', 'c', 'd'], {
+    seats: [{ playerId: 'c', score: 30000 }, { playerId: 'a', score: 30000 }, { playerId: 'b', score: 30000 }, { playerId: 'd', score: 10000 }],
+  });
+  assert.deepEqual(d.players, ['c', 'a', 'b', 'd']);
+  assert.deepEqual(unresolvedTies(d), []);
+  assert.deepEqual(seatsForSave(d).map((s) => s.playerId), ['c', 'a', 'b', 'd']);
+});

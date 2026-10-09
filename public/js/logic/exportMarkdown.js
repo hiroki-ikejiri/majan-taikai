@@ -4,7 +4,6 @@ import { okaOf } from './scoring.js';
 import { computeSettlement, isFeePrepaid, feePerPerson } from './settlement.js';
 import { placeLabel } from './standings.js';
 
-const WINDS = ['東', '南', '西', '北'];
 
 const pt = (n) => (n > 0 ? `+${n}` : `${n}`);
 const yen = (n) => `${n < 0 ? '-' : ''}¥${Math.abs(n).toLocaleString('ja-JP')}`;
@@ -149,14 +148,14 @@ export function buildResultMarkdown(t, d, chips = {}) {
       scoreRows.push([
         roundName(rules, r),
         `${tb.label}卓`,
-        ...res.seats.map((s) => {
-          const pr = st.get(s.playerId)?.perRound[r];
-          return `${d.nameOf(s.playerId)} ${s.score}（${pr ? pt(pr.point) : ''}）`;
-        }),
+        ...res.seats
+          .map((s) => ({ s, pr: st.get(s.playerId)?.perRound[r] }))
+          .sort((a, b) => (a.pr?.rank || 9) - (b.pr?.rank || 9))
+          .map(({ s, pr }) => `${d.nameOf(s.playerId)} ${s.score}（${pr ? pt(pr.point) : ''}）`),
       ]);
     });
   });
-  out.push(scoreRows.length ? table(['回戦', '卓', ...WINDS], scoreRows) : 'まだ結果がありません。');
+  out.push(scoreRows.length ? table(['回戦', '卓', '1着', '2着', '3着', '4着'], scoreRows) : 'まだ結果がありません。');
   out.push('');
 
   return out.join('\n');

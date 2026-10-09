@@ -14,6 +14,8 @@
 //   overwriteResult(id, resultId, data) / deleteResult(id, resultId)
 //   watchChips(id, cb) -> unsubscribe       cb({ playerId: count })
 //   setChip(id, playerId, count)
+//   watchNames(id, cb) -> unsubscribe       cb({ playerId: 参加者が直した名前 })
+//   setName(id, playerId, name)             name が null なら直した名前を消す（主催者の名前に戻す）
 //   getPastPlayers(uid) -> { name: count }
 //   addPastPlayers(uid, names)
 import { firebaseConfig } from '../config.js';
