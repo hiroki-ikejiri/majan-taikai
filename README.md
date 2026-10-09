@@ -52,6 +52,8 @@ tests/                単体テスト（node:test）
 e2e/                  画面操作テスト（Playwright、デモモード）
 firestore.rules       Firestore の権限ルール
 docs/SETUP.md         本番セットアップ手順
+docs/manual/          使い方ガイド（manual.html・キャプチャ・PDF）
+scripts/manual/       使い方ガイドのキャプチャと PDF を作るスクリプト
 ```
 
 ## 開発
@@ -76,6 +78,20 @@ npx playwright install chromium
 
 ```bash
 npm run test:all
+```
+
+## 説明書
+
+キャプチャ入りの使い方ガイドは [docs/manual/麻雀大会スコア_使い方.pdf](docs/manual/麻雀大会スコア_使い方.pdf) です。画面を変えたときは、次のコマンドでキャプチャを撮り直して PDF を作り直せます（デモモードで撮るので、本番のデータには触りません）。
+
+```bash
+npm run manual
+```
+
+文章（`docs/manual/manual.html`）だけを直したときは、PDF だけ作り直せます。
+
+```bash
+npm run manual -- --pdf-only
 ```
 
 ## 本番セットアップ
