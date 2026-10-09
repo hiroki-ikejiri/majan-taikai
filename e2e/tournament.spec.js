@@ -14,10 +14,10 @@ test.describe('大会作成', () => {
     await page.getByRole('button', { name: '次へ（参加者）' }).click();
 
     // マークダウンの表から 6 人
-    await page.locator('textarea').nth(1).fill(
+    await page.locator('textarea').first().fill(
       ['| No | 名前 | 所属 |', '|---|---|---|', ...NAMES8.slice(0, 6).map((n, i) => `| ${i + 1} | ${n} | 本社 |`)].join('\n'),
     );
-    await page.getByRole('button', { name: '読み込む', exact: true }).click();
+    await page.getByRole('button', { name: '追加', exact: true }).click();
     await expect(page.locator('.count-line')).toHaveText('6 / 8 人');
 
     // 人数が足りないと先へ進めない
@@ -25,7 +25,7 @@ test.describe('大会作成', () => {
     await expect(page.locator('.toast.error')).toContainText('8 人ぶん');
 
     // 手入力で 2 人（重複は無視される）
-    await page.locator('textarea').first().fill('伊藤、渡辺\n池尻');
+    await page.locator('textarea').first().fill('"伊藤", \'渡辺\'、池尻');
     await page.getByRole('button', { name: '追加', exact: true }).click();
     await expect(page.locator('.count-line')).toHaveText('8 / 8 人');
     await page.getByRole('button', { name: '次へ（ルール）' }).click();
@@ -51,6 +51,53 @@ test.describe('大会作成', () => {
     await expect(page.getByRole('heading', { name: '過去の参加者から選ぶ' })).toBeVisible();
     await page.getByRole('button', { name: /池尻/ }).click();
     await expect(page.locator('.count-line')).toHaveText('1 / 8 人');
+  });
+
+  test('名前が足りない分をゲスト1、ゲスト2…で埋めて作れる', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'デモ主催者として始める' }).click();
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('ゲスト大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+    await page.locator('textarea').first().fill('池尻\n山田\n佐藤');
+    await page.getByRole('button', { name: '追加', exact: true }).click();
+
+    await page.getByRole('button', { name: '残り 5 人を仮の名前（ゲスト1…）で埋める' }).click();
+    await expect(page.locator('.count-line')).toHaveText('8 / 8 人');
+    await expect(page.locator('.name-chip')).toHaveText(['池尻×', '山田×', '佐藤×', 'ゲスト1×', 'ゲスト2×', 'ゲスト3×', 'ゲスト4×', 'ゲスト5×']);
+    await expect(page.getByRole('button', { name: /仮の名前/ })).toHaveCount(0);
+
+    await page.getByRole('button', { name: '次へ（ルール）' }).click();
+    await page.getByRole('button', { name: '次へ（確認）' }).click();
+    await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
+    await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible();
+
+    // 仮の名前は過去の参加者に残らない
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('次の大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+    await expect(page.locator('.chip', { hasText: '池尻' })).toBeVisible();
+    await expect(page.locator('.chip', { hasText: 'ゲスト' })).toHaveCount(0);
+  });
+
+  test('テキストファイル（田中、加藤、…）から名前を読み込める', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'デモ主催者として始める' }).click();
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('ファイル大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+    await page.getByLabel('名前のファイルを選ぶ').setInputFiles({
+      name: 'names.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('田中、加藤、　\n佐藤,鈴木;"高橋"\n「伊藤」『渡辺』\n- 山田 太郎\n'),
+    });
+    await expect(page.locator('textarea').first()).toHaveValue(/田中、加藤/);
+    await page.getByRole('button', { name: '追加', exact: true }).click();
+    await expect(page.locator('.count-line')).toHaveText('8 / 8 人');
+    await expect(page.locator('.name-chip')).toHaveText(['田中×', '加藤×', '佐藤×', '鈴木×', '高橋×', '伊藤×', '渡辺×', '山田 太郎×']);
   });
 
   test('4 の倍数でない人数は受け付けない', async ({ page }) => {
@@ -124,6 +171,27 @@ test.describe('参加者', () => {
     await page.locator('.score-input').nth(3).blur();
     await expect(page.locator('.confirm-table')).toBeVisible();
     await expect(page.getByText('間違いがあれば主催者に修正を頼んでください')).toBeVisible();
+  });
+
+  test('3 人分を入れると 4 人目の点数が自動で入る', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    const inputs = page.locator('.score-input');
+    await inputs.nth(0).fill('420');
+    await inputs.nth(1).fill('330');
+    await inputs.nth(2).fill('260');
+    // 100,000 − 101,000 = −1,000 点
+    await expect(inputs.nth(3)).toHaveValue('10');
+    await expect(page.locator('.sign').nth(3)).toHaveText('−');
+    await expect(page.locator('.auto-badge').nth(3)).toBeVisible();
+    await expect(page.locator('.total-bar')).toContainText('OK');
+    await expect(page.locator('.pt-preview')).toHaveText(['+62', '+13', '-14', '-61']);
+    // 1 人目を直すと 4 人目も計算し直す
+    await inputs.nth(0).fill('400');
+    await expect(inputs.nth(3)).toHaveValue('10');
+    await expect(page.locator('.sign').nth(3)).toHaveText('+');
+    await expect(page.getByRole('button', { name: '確認して保存' })).toBeEnabled();
   });
 
   test('ルール画面に設定とルール文が出る', async ({ page }) => {

@@ -72,12 +72,13 @@ export async function seed(page, { tournament, results = {}, chips = {}, organiz
   );
 }
 
-// 素点フォームに入力する（百点単位）。負の点数は ± ボタンで切り替える
+// 素点フォームに 4 人分を手で入力する（百点単位）。± ボタンは今の向きを見て合わせる
 export async function fillScores(page, scores) {
   const inputs = page.locator('.score-input');
   const signs = page.locator('.sign');
   for (let i = 0; i < 4; i += 1) {
     await inputs.nth(i).fill(String(Math.abs(scores[i]) / 100));
-    if (scores[i] < 0) await signs.nth(i).click();
+    const isNegative = (await signs.nth(i).textContent()) === '−';
+    if (isNegative !== scores[i] < 0) await signs.nth(i).click();
   }
 }

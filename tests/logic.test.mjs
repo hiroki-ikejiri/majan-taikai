@@ -139,3 +139,32 @@ test('「名前」見出しがなければ 1 列目', () => {
   const md = '| 佐藤 | x |\n| 鈴木 | y |';
   assert.deepEqual(parseNamesFromMarkdownTable(md), ['佐藤', '鈴木']);
 });
+
+test('足りない人数をゲスト1、ゲスト2…で埋める', async () => {
+  const { fillWithGuests, isGuestName } = await import('../public/js/logic/names.js');
+  assert.deepEqual(fillWithGuests(['池尻', 'ゲスト1'], 4), ['池尻', 'ゲスト1', 'ゲスト2', 'ゲスト3']);
+  assert.deepEqual(fillWithGuests(['a', 'b'], 2), ['a', 'b']);
+  assert.equal(isGuestName('ゲスト12'), true);
+  assert.equal(isGuestName('ゲストさん'), false);
+});
+
+test('名前はいろいろな区切りで読める', async () => {
+  const { parseNames } = await import('../public/js/logic/names.js');
+  assert.deepEqual(parseNames('田中、加藤、　'), ['田中', '加藤']);
+  assert.deepEqual(parseNames('田中,加藤，佐藤;鈴木；高橋\t伊藤'), ['田中', '加藤', '佐藤', '鈴木', '高橋', '伊藤']);
+  assert.deepEqual(parseNames('"田中","加藤", \'佐藤\''), ['田中', '加藤', '佐藤']);
+  assert.deepEqual(parseNames('“田中”“加藤”'), ['田中', '加藤']);
+  assert.deepEqual(parseNames('「田中」『加藤』（佐藤）【鈴木】'), ['田中', '加藤', '佐藤', '鈴木']);
+  assert.deepEqual(parseNames('田中・加藤／佐藤|鈴木'), ['田中', '加藤', '佐藤', '鈴木']);
+  assert.deepEqual(parseNames('- 田中\n* 加藤\n1. 佐藤\n2) 鈴木\n● 高橋'), ['田中', '加藤', '佐藤', '鈴木', '高橋']);
+});
+
+test('名前の中の空白では分けない', async () => {
+  const { parseNames } = await import('../public/js/logic/names.js');
+  assert.deepEqual(parseNames('山田 太郎、山田　花子'), ['山田 太郎', '山田 花子']);
+});
+
+test('マークダウンの表なら「名前」列を読む', async () => {
+  const { parseNames } = await import('../public/js/logic/names.js');
+  assert.deepEqual(parseNames('| No | 名前 |\n|---|---|\n| 1 | 田中 |\n| 2 | 加藤 |'), ['田中', '加藤']);
+});
