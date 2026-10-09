@@ -188,3 +188,17 @@ test('マークダウンの表なら「名前」列を読む', async () => {
   const { parseNames } = await import('../public/js/logic/names.js');
   assert.deepEqual(parseNames('| No | 名前 |\n|---|---|\n| 1 | 田中 |\n| 2 | 加藤 |'), ['田中', '加藤']);
 });
+
+test('空白で 3 つ以上並んでいれば分ける。2 語はフルネーム扱い', async () => {
+  const { parseNames } = await import('../public/js/logic/names.js');
+  assert.deepEqual(parseNames('ikejiri sato tanaka yamaguti'), ['ikejiri', 'sato', 'tanaka', 'yamaguti']);
+  assert.deepEqual(parseNames('田中　加藤　佐藤'), ['田中', '加藤', '佐藤']);
+  assert.deepEqual(parseNames('山田 太郎'), ['山田 太郎']);
+  assert.deepEqual(parseNames('山田 太郎、佐藤 花子'), ['山田 太郎', '佐藤 花子']);
+});
+
+test('「空白も区切りにする」なら 2 語でも分ける', async () => {
+  const { parseNames } = await import('../public/js/logic/names.js');
+  assert.deepEqual(parseNames('田中 加藤', { splitOnSpace: true }), ['田中', '加藤']);
+  assert.deepEqual(parseNames('a b、c', { splitOnSpace: true }), ['a', 'b', 'c']);
+});
