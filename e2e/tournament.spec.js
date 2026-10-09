@@ -546,7 +546,12 @@ test.describe('主催者', () => {
     await expect(page.locator('.screen-round')).toHaveText('第1回戦');
     await expect(page.locator('.timer.big .timer-left')).toHaveText('50:00');
     await expect(page.locator('.screen-table')).toHaveCount(2);
+    // QR コードはふだん隠しておき、ボタンで出し入れする
+    await expect(page.locator('.screen-qr')).toHaveCount(0);
+    await page.getByRole('button', { name: 'QR を表示' }).click();
     await expect(page.locator('.screen-qr .qr svg')).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'QR を隠す' }).click();
+    await expect(page.locator('.screen-qr')).toHaveCount(0);
     // まだ結果がないので、順位の代わりに案内を出す
     await expect(page.locator('.screen-empty')).toHaveText('第1回戦の結果が入ると、ここに順位が出ます');
     await expect(page.locator('.screen-rank-row')).toHaveCount(0);
