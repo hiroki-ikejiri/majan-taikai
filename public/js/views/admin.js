@@ -192,7 +192,8 @@ function renderSettings(ctx) {
 
 // ===== 打ち切りタイマー =====
 // 主催者が回戦ごとに開始する。開始時刻を大会データに保存するので、会場表示や参加者のスマホにも同じ残り時間が出る
-function timerCard(ctx) {
+// タイマーの操作ボタン（主催者メニューと会場表示で共用）。big は会場表示用の大きさ
+export function timerControls(ctx, { big = false } = {}) {
   const { state, store } = ctx;
   const t = state.t;
   const d = state.d;
@@ -207,45 +208,45 @@ function timerCard(ctx) {
     }
   };
   const isCurrent = timer && timer.round === r;
-
-  let buttons;
-  if (d.allDone) {
-    buttons = [];
-  } else if (!r || d.waitingFinal) {
-    buttons = [h('p', { class: 'muted' }, '決勝の卓を確定すると開始できます')];
-  } else if (!isCurrent) {
-    buttons = [h('button', { class: 'btn primary big', onClick: () => save(startTimer(r, Date.now()), `${roundTitle(d, r)}を開始しました`) }, `${roundTitle(d, r)} 開始`)];
-  } else {
-    buttons = [
-      h(
-        'div',
-        { class: 'row' },
-        timer.pausedAt
-          ? h('button', { class: 'btn primary', onClick: () => save(resumeTimer(timer, Date.now()), '再開しました') }, '再開')
-          : h('button', { class: 'btn', onClick: () => save(pauseTimer(timer, Date.now()), '一時停止しました') }, '一時停止'),
-        h('button', {
-          class: 'btn',
-          onClick: () => {
-            if (window.confirm('タイマーを最初からやり直しますか？')) save(startTimer(r, Date.now()), 'やり直しました');
-          },
-        }, '最初から'),
-        h('button', {
-          class: 'btn link danger',
-          onClick: () => {
-            if (window.confirm('タイマーを止めて開始前に戻しますか？')) save(null, '止めました');
-          },
-        }, '止める'),
-      ),
-    ];
+  if (d.allDone) return null;
+  if (!r || d.waitingFinal) return h('p', { class: 'muted' }, '決勝の卓を確定すると開始できます');
+  if (!isCurrent) {
+    return h('button', { class: `btn primary ${big ? 'screen-btn' : 'big'}`, onClick: () => save(startTimer(r, Date.now()), `${roundTitle(d, r)}を開始しました`) }, `${roundTitle(d, r)} 開始`);
   }
+  return h(
+    'div',
+    { class: `row timer-controls ${big ? 'center' : ''}` },
+    timer.pausedAt
+      ? h('button', { class: `btn primary ${big ? 'screen-btn' : ''}`, onClick: () => save(resumeTimer(timer, Date.now()), '再開しました') }, '再開')
+      : h('button', { class: `btn ${big ? 'screen-btn' : ''}`, onClick: () => save(pauseTimer(timer, Date.now()), '一時停止しました') }, '一時停止'),
+    h('button', {
+      class: `btn ${big ? 'screen-btn' : ''}`,
+      onClick: () => {
+        if (window.confirm('タイマーを最初からやり直しますか？')) save(startTimer(r, Date.now()), 'やり直しました');
+      },
+    }, '最初から'),
+    h('button', {
+      class: 'btn link danger',
+      onClick: () => {
+        if (window.confirm('タイマーを止めて開始前に戻しますか？')) save(null, '止めました');
+      },
+    }, '止める'),
+  );
+}
 
+function timerCard(ctx) {
+  const { state } = ctx;
+  const t = state.t;
+  const d = state.d;
+  const r = d.currentRound;
+  const isCurrent = t.timer && t.timer.round === r;
   return h(
     'section',
     { class: 'card timer-card' },
     h('div', { class: 'row between' }, h('h2', {}, d.allDone ? '全回戦 終了' : r ? `${roundTitle(d, r)}の時間` : '時間'), h('a', { class: 'btn small', href: `#/t/${t.id}/screen`, target: '_blank', rel: 'noopener' }, '会場表示を開く')),
     !d.allDone && isCurrent && timerDisplay('small'),
     !d.allDone && !isCurrent && h('p', { class: 'muted' }, `打ち切り ${timeLimitLabel(d)}。全卓がそろったら開始を押してください`),
-    buttons,
+    timerControls(ctx),
   );
 }
 

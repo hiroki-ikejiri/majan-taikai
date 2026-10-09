@@ -1,4 +1,5 @@
 // 確定した結果から、全体順位・トップとの差・決勝ラインまでの差を出す
+import { compareNames } from './names.js';
 
 // results は { round, table, seats: [{ playerId, score }] × 4 }（東南西北の順）の配列
 export function computeStandings(players, results, rules, calcHanchan) {
@@ -18,7 +19,7 @@ export function computeStandings(players, results, rules, calcHanchan) {
     });
   });
 
-  const list = [...rows.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'ja'));
+  const list = [...rows.values()].sort((a, b) => b.total - a.total || compareNames(a.name, b.name));
 
   // 同じ合計なら同じ順位にする（1, 2, 2, 4 …）
   list.forEach((row, i) => {
