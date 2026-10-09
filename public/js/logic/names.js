@@ -72,8 +72,10 @@ const LIST_MARK = /^(?:[-*+•●○◯・]\s*|\d+[.)．）、]\s*)/;
 
 // テキストから名前を読み取る。マークダウンの表があれば「名前」列、
 // なければ改行・読点・カンマ・引用符などの区切りで分ける。
-// 「山田 太郎」のような名前の中の空白では分けない
-export function parseNames(text) {
+// 空白は「山田 太郎」のようなフルネームを壊さないよう、ふだんは区切りにしない。
+// ただし「ikejiri sato tanaka」のように空白で 3 つ以上並んでいるときは、名前の並びとみなして分ける。
+// splitOnSpace が true なら、空白は常に区切りにする
+export function parseNames(text, { splitOnSpace = false } = {}) {
   const tableLines = text.split(/\r?\n/).filter((l) => l.trim().startsWith('|'));
   if (tableLines.length >= 2) {
     const fromTable = parseNamesFromMarkdownTable(text);
@@ -88,6 +90,10 @@ export function parseNames(text) {
     // 「田中」『加藤』のように、かっこが続いているところでも分ける
     .replace(/[」』）)】\]]\s*[「『（(【\[]/g, '\n')
     .split(SEPARATORS)
-    .map((p) => p.replace(WRAPPERS, '').replace(LIST_MARK, '').replace(WRAPPERS, ''));
+    .map((p) => p.replace(WRAPPERS, '').replace(LIST_MARK, '').replace(WRAPPERS, ''))
+    .flatMap((p) => {
+      const words = p.trim().split(/[\s　]+/).filter(Boolean);
+      return splitOnSpace || words.length >= 3 ? words : [p];
+    });
   return cleanNames(pieces);
 }

@@ -295,17 +295,25 @@ function stepNames(w, go, ctx) {
       text.value = await f.text();
     },
   });
+  const spaceToggle = h('input', { type: 'checkbox', 'aria-label': '空白も区切りにする' });
   section.append(
     h('h3', {}, '名前を入力・ファイルから読み込む'),
     h('p', { class: 'muted' }, '「田中、加藤」「田中,加藤」「\"田中\",\"加藤\"」や 1 行 1 人など、区切り方は自由です。テキストファイルやマークダウンの表（「名前」列）も読み込めます'),
     file,
     text,
     h(
+      'label',
+      { class: 'field inline space-toggle' },
+      h('span', {}, '空白も区切りにする（「田中 加藤」を 2 人として読む）'),
+      spaceToggle,
+    ),
+    h('p', { class: 'muted small-note' }, 'チェックなしでも、空白で 3 人以上並んでいれば分けます。「山田 太郎」のような 2 語はフルネームとして読みます'),
+    h(
       'button',
       {
         class: 'btn',
         onClick: () => {
-          const names = parseNames(text.value);
+          const names = parseNames(text.value, { splitOnSpace: spaceToggle.checked });
           if (!names.length) {
             toast('名前が見つかりませんでした', 'error');
             return;
@@ -438,7 +446,8 @@ export function feeModeSwitch(rules, onSelect) {
 // 数値ルールとルール文の編集欄（大会作成と主催者画面で共用）
 // roundsLocked が true のとき（大会作成後）は、回戦の設定を変えられないように表示だけにする
 export function rulesEditor(rules, sections, { onChange, roundsLocked = false } = {}) {
-  const num = (label, key, opts = {}) =>
+  // after は値が変わったあとに呼ぶ処理（オカの表示の更新など）
+  const num = (label, key, opts = {}, after) =>
     h(
       'label',
       { class: 'field inline' },
@@ -451,10 +460,18 @@ export function rulesEditor(rules, sections, { onChange, roundsLocked = false } 
         ...opts,
         onInput: (e) => {
           rules[key] = Number(e.target.value);
+          after?.();
           onChange?.();
         },
       }),
     );
+  // オカは持ち点と返しから決まるので、どちらかが変わるたびに表示し直す
+  const okaLabel = h('p', { class: 'muted oka-label' });
+  const drawOka = () => {
+    const oka = okaOf(rules);
+    okaLabel.textContent = Number.isFinite(oka) ? `オカ（トップ賞）は自動で ${oka >= 0 ? '+' : ''}${oka} になります` : 'オカは持ち点と返しを入れると自動で計算します';
+  };
+  drawOka();
   const rateInput = h('input', {
     class: 'input num',
     type: 'number',
@@ -466,19 +483,11 @@ export function rulesEditor(rules, sections, { onChange, roundsLocked = false } 
       onChange?.();
     },
   });
-  const umaInputs = rules.uma.map((v, i) =>
-    h('input', {
-      class: 'input num',
-      type: 'number',
-      inputmode: 'numeric',
-      value: v,
-      'aria-label': `${i + 1}位のウマ`,
-      onInput: (e) => {
-        rules.uma[i] = Number(e.target.value);
-        onChange?.();
-      },
-    }),
-  );
+  const umaLabel = h('p', { class: 'muted uma-label' });
+  const drawUma = () => {
+    umaLabel.textContent = rules.uma.map((v, i) => `${i + 1}位 ${v > 0 ? '+' : ''}${v}`).join(' / ');
+  };
+  drawUma();
   const presets = [
     ['10-30', [30, 10, -10, -30]],
     ['10-20', [20, 10, -10, -20]],
@@ -509,20 +518,20 @@ export function rulesEditor(rules, sections, { onChange, roundsLocked = false } 
     'div',
     {},
     h('h3', {}, '点数のルール'),
-    num('持ち点', 'startPoints', { step: '1000' }),
-    num('返し', 'returnPoints', { step: '1000' }),
-    h('p', { class: 'muted' }, `オカ（トップ賞）は自動で +${okaOf(rules)} になります`),
+    num('持ち点', 'startPoints', { step: '1000' }, drawOka),
+    num('返し', 'returnPoints', { step: '1000' }, drawOka),
+    okaLabel,
     h('div', { class: 'field' }, h('span', {}, 'ウマ（1〜4 位）'),
       h('div', { class: 'chip-grid' }, presets.map(([label, uma]) =>
-        h('button', { class: `chip ${uma.join() === rules.uma.join() ? 'on' : ''}`, onClick: (e) => {
+        h('button', { type: 'button', class: `chip ${uma.join() === rules.uma.join() ? 'on' : ''}`, onClick: (e) => {
           rules.uma.splice(0, 4, ...uma);
-          umaInputs.forEach((inp, i) => (inp.value = uma[i]));
+          drawUma();
           e.currentTarget.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
           e.currentTarget.classList.add('on');
           onChange?.();
         } }, label),
       )),
-      h('div', { class: 'uma-row' }, umaInputs),
+      umaLabel,
     ),
     h('h3', {}, '回戦'),
     roundsEditor(rules, { onChange, locked: roundsLocked }),

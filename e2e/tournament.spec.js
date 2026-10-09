@@ -36,6 +36,14 @@ test.describe('大会作成', () => {
     await expect(page.getByLabel('レート（円）')).toHaveValue('50');
     await page.getByRole('button', { name: '事前に徴収済み' }).click();
     await expect(page.getByText('オカ（トップ賞）は自動で +20 になります')).toBeVisible();
+    await expect(page.locator('.uma-label')).toHaveText('1位 +20 / 2位 +10 / 3位 -10 / 4位 -20');
+    // ウマは入力欄なしでボタンだけ
+    await expect(page.getByLabel('1位のウマ')).toHaveCount(0);
+    // 返しを変えるとオカがすぐ計算し直される（(35000 - 25000) × 4 ÷ 1000 = +40）
+    await page.getByLabel('返し').fill('35000');
+    await expect(page.locator('.oka-label')).toHaveText('オカ（トップ賞）は自動で +40 になります');
+    await page.getByLabel('返し').fill('30000');
+    await expect(page.locator('.oka-label')).toHaveText('オカ（トップ賞）は自動で +20 になります');
     await page.getByRole('button', { name: '次へ（確認）' }).click();
 
     await expect(page.getByText('予選 6 回 ＋ 決勝 1 回')).toBeVisible();
@@ -134,6 +142,29 @@ test.describe('大会作成', () => {
     await page.getByRole('link', { name: '設定' }).click();
     await expect(page.locator('.rounds-summary')).toHaveText('予選 7 回 ＋ 決勝 1 回（全 8 回戦）');
     await expect(page.getByLabel('予選の回数')).toHaveCount(0);
+  });
+
+  test('空白区切りの名前も読める', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'デモ主催者として始める' }).click();
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('空白大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+
+    // 3 つ以上並んでいればそのまま分かれる
+    await page.locator('textarea').first().fill('ikejiri sato tanaka yamaguti');
+    await page.getByRole('button', { name: '追加', exact: true }).click();
+    await expect(page.locator('.count-line')).toHaveText('4 / 8 人');
+
+    // 2 語はフルネーム扱い。チェックを付けると 2 人に分かれる
+    await page.locator('textarea').first().fill('山田 太郎');
+    await page.getByRole('button', { name: '追加', exact: true }).click();
+    await expect(page.locator('.name-chip', { hasText: '山田 太郎' })).toBeVisible();
+    await page.locator('textarea').first().fill('鈴木 高橋');
+    await page.getByLabel('空白も区切りにする').check();
+    await page.getByRole('button', { name: '追加', exact: true }).click();
+    await expect(page.locator('.count-line')).toHaveText('7 / 8 人');
   });
 
   test('4 の倍数でない人数は受け付けない', async ({ page }) => {
