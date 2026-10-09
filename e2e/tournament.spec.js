@@ -364,4 +364,34 @@ test.describe('精算', () => {
     await expect(page.getByPlaceholder('例 48000')).toBeVisible();
     await expect(page.getByRole('button', { name: '精算を確定する' })).toBeDisabled();
   });
+
+  test('主催者は結果をマークダウンでダウンロードできる', async ({ page }) => {
+    const t = buildTournament();
+    t.data.schedule['7'] = [
+      { label: 'A', players: ['p1', 'p2', 'p3', 'p4'] },
+      { label: 'B', players: ['p5', 'p6', 'p7', 'p8'] },
+    ];
+    const results = { ...resultsFor(t, [1, 2, 3, 4, 5, 6]), ...resultsFor(t, [7], [10000, 20000, 30000, 40000]) };
+    await seed(page, { tournament: t, results, chips: { p1: 2, p2: -2 }, organizer: true, me: 'p1' });
+
+    // 全回戦が終わると進行タブから案内が出る
+    await page.goto(`/#/t/${t.id}/admin`);
+    await page.getByRole('link', { name: '精算・結果の書き出しへ' }).click();
+    await expect(page.getByRole('heading', { name: '結果を書き出す（マークダウン）' })).toBeVisible();
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'ファイルをダウンロード' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('E2E_大会_結果.md');
+    const text = await (await download.createReadStream()).toArray().then((chunks) => Buffer.concat(chunks).toString('utf8'));
+    expect(text).toContain('# E2E 大会 結果');
+    expect(text).toContain('## 最終結果');
+    expect(text).toContain('| 優勝 | 鈴木 | A卓 | 1着 |');
+    expect(text).toContain('| チップ枚数 | +2 | -2 |');
+
+    // 画面でも中身を確認できる
+    await page.getByText('中身を見る').click();
+    await expect(page.locator('.md-preview')).toContainText('## ポイントランキング・精算');
+  });
 });
