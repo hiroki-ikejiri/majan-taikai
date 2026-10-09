@@ -43,3 +43,51 @@ export function cleanNames(names) {
   });
   return out;
 }
+
+// 人数に足りない分を「ゲスト1」「ゲスト2」…で埋めた名前の配列を返す。
+// すでに同じ名前がある番号は飛ばす（例 ゲスト1 が登録済みなら ゲスト2 から）
+export function fillWithGuests(names, count) {
+  const out = [...names];
+  const used = new Set(out);
+  let n = 1;
+  while (out.length < count) {
+    const name = `ゲスト${n}`;
+    if (!used.has(name)) {
+      out.push(name);
+      used.add(name);
+    }
+    n += 1;
+  }
+  return out;
+}
+
+// fillWithGuests で付けた仮の名前かどうか
+export const isGuestName = (name) => /^ゲスト\d+$/.test(name);
+
+// 区切りに使われそうな文字（改行・読点・カンマ・セミコロン・タブ・中黒・スラッシュ・縦棒）
+const SEPARATORS = /[\n\r\t、，,;；・/／|｜]+/;
+// 名前の前後についていそうな記号（引用符・かっこ・箇条書きの印・番号）
+const WRAPPERS = /^[\s　"'“”‘’「」『』【】()（）\[\]<>＜＞]+|[\s　"'“”‘’「」『』【】()（）\[\]<>＜＞]+$/g;
+const LIST_MARK = /^(?:[-*+•●○◯・]\s*|\d+[.)．）、]\s*)/;
+
+// テキストから名前を読み取る。マークダウンの表があれば「名前」列、
+// なければ改行・読点・カンマ・引用符などの区切りで分ける。
+// 「山田 太郎」のような名前の中の空白では分けない
+export function parseNames(text) {
+  const tableLines = text.split(/\r?\n/).filter((l) => l.trim().startsWith('|'));
+  if (tableLines.length >= 2) {
+    const fromTable = parseNamesFromMarkdownTable(text);
+    if (fromTable.length) return fromTable;
+  }
+  const pieces = text
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(LIST_MARK, ''))
+    .join('\n')
+    // "田中","加藤" のように引用符だけで区切られている場合にも分けられるようにする
+    .replace(/["“”]\s*["“”]/g, '\n')
+    // 「田中」『加藤』のように、かっこが続いているところでも分ける
+    .replace(/[」』）)】\]]\s*[「『（(【\[]/g, '\n')
+    .split(SEPARATORS)
+    .map((p) => p.replace(WRAPPERS, '').replace(LIST_MARK, '').replace(WRAPPERS, ''));
+  return cleanNames(pieces);
+}

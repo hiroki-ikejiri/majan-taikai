@@ -537,3 +537,6 @@ button.table-card { cursor: pointer; }
 .toast.error { background: var(--minus); color: #fff; }
 .toast.out { opacity: 0; }
 .stat-value.top { color: var(--band); line-height: 39px; }
+.score-input.auto { border-color: var(--accent); background: var(--accent-soft); }
+.auto-badge { background: var(--accent-soft); color: var(--accent-strong); }
+.auto-badge[hidden] { display: none; }
