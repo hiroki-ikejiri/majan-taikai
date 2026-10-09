@@ -1,5 +1,6 @@
 // 主催者の画面（進行・設定・共有・精算）
-import { h, fmtPt, toast, modal } from '../ui.js';
+import { h, fmtPt, toast, modal, copyText } from '../ui.js';
+import { buildResultMarkdown, resultFileName } from '../logic/exportMarkdown.js';
 import { DEFAULT_RULES } from '../logic/scoring.js';
 import { makeFinalTables, TABLE_LABELS } from '../logic/seating.js';
 import { chipStatus, feeReady, isFeePrepaid } from '../logic/settlement.js';
@@ -50,6 +51,15 @@ function renderProgress(ctx) {
   const t = state.t;
   const d = state.d;
   const wrap = h('div', {});
+
+  if (d.allDone) {
+    wrap.append(
+      h('section', { class: 'card hero done' },
+        h('h2', {}, '全回戦が終わりました'),
+        h('a', { class: 'btn primary big', href: `#/t/${t.id}/admin/settle` }, '精算・結果の書き出しへ'),
+      ),
+    );
+  }
 
   // 決勝の卓割り
   if (d.rules.hasFinal) {
@@ -232,6 +242,37 @@ function renderSettings(ctx) {
   );
 }
 
+// ===== 結果の書き出し =====
+// 集計表と同じ並びのマークダウンを作り、ダウンロードかコピーで渡す（Claude に渡せば集計表に転記できる）
+function exportCard(ctx) {
+  const { state } = ctx;
+  const t = state.t;
+  const d = state.d;
+  const markdown = () => buildResultMarkdown(t, d, state.chips);
+  const download = () => {
+    const blob = new Blob([markdown()], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: resultFileName(t) });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const preview = h('pre', { class: 'md-preview' });
+  return h(
+    'section',
+    { class: 'card' },
+    h('h2', {}, '結果を書き出す（マークダウン）'),
+    h('p', { class: 'muted' }, '集計表と同じ並び（回戦ごとのポイント・最終結果・ポイントランキングと精算・対戦組み合わせ・素点）で書き出します。Claude に渡せばスプレッドシートに転記できます。'),
+    !d.allDone && h('p', { class: 'badge warn' }, 'まだ全回戦が終わっていないので、途中経過として書き出します'),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn primary', onClick: download }, 'ファイルをダウンロード'),
+      h('button', { class: 'btn', onClick: () => copyText(markdown()) }, 'コピー'),
+    ),
+    h('details', { onToggle: (e) => { if (e.currentTarget.open) preview.textContent = markdown(); } }, h('summary', {}, '中身を見る'), preview),
+  );
+}
+
 // ===== 精算（主催者） =====
 function renderAdminSettle(ctx) {
   const { state, store } = ctx;
@@ -340,5 +381,6 @@ function renderAdminSettle(ctx) {
               h('p', { class: 'muted' }, '全回戦の結果・場代（事前徴収なら不要）・チップ（合計 0 枚）がそろうと押せます'),
           ],
     ),
+    exportCard(ctx),
   );
 }
