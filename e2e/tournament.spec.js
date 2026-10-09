@@ -46,7 +46,8 @@ test.describe('大会作成', () => {
 
     await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible();
     await expect(page.locator('.url-box')).toContainText('#/t/');
-    await expect(page.locator('.qr svg')).toBeVisible();
+    // QR コードの部品は cdnjs から読み込むので、通信が遅いときのために長めに待つ
+    await expect(page.locator('.qr svg')).toBeVisible({ timeout: 20_000 });
 
     // 次の大会作成では過去の参加者が選べる
     await page.goto('/#/new');
@@ -103,6 +104,36 @@ test.describe('大会作成', () => {
     await page.getByRole('button', { name: '追加', exact: true }).click();
     await expect(page.locator('.count-line')).toHaveText('8 / 8 人');
     await expect(page.locator('.name-chip')).toHaveText(['田中×', '加藤×', '佐藤×', '鈴木×', '高橋×', '伊藤×', '渡辺×', '山田 太郎×']);
+  });
+
+  test('予選の回数と決勝の有無を選べる', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'デモ主催者として始める' }).click();
+    await page.goto('/#/new');
+    await page.getByRole('button', { name: '8人', exact: true }).click();
+    await page.getByPlaceholder('第11回大会').fill('回数大会');
+    await page.getByRole('button', { name: '次へ（参加者）' }).click();
+    await page.getByRole('button', { name: /仮の名前/ }).click();
+    await page.getByRole('button', { name: '次へ（ルール）' }).click();
+
+    await expect(page.locator('.rounds-summary')).toHaveText('予選 6 回 ＋ 決勝 1 回（全 7 回戦）');
+    await page.getByRole('button', { name: '7回', exact: true }).click();
+    await expect(page.locator('.rounds-summary')).toHaveText('予選 7 回 ＋ 決勝 1 回（全 8 回戦）');
+    await page.getByRole('button', { name: '決勝なし' }).click();
+    await expect(page.locator('.rounds-summary')).toHaveText('全 7 回戦（決勝なし）');
+    await page.getByRole('button', { name: '決勝あり（成績順の卓）' }).click();
+    await page.getByLabel('予選の回数').fill('3');
+    await expect(page.locator('.rounds-summary')).toHaveText('予選 3 回 ＋ 決勝 1 回（全 4 回戦）');
+    await page.getByLabel('予選の回数').fill('7');
+
+    await page.getByRole('button', { name: '次へ（確認）' }).click();
+    await expect(page.getByText('予選 7 回 ＋ 決勝 1 回')).toBeVisible();
+    await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
+
+    // 作成後の設定では回戦の数は変えられない
+    await page.getByRole('link', { name: '設定' }).click();
+    await expect(page.locator('.rounds-summary')).toHaveText('予選 7 回 ＋ 決勝 1 回（全 8 回戦）');
+    await expect(page.getByLabel('予選の回数')).toHaveCount(0);
   });
 
   test('4 の倍数でない人数は受け付けない', async ({ page }) => {
@@ -222,7 +253,7 @@ test.describe('主催者', () => {
     // 参加者ホームに決勝の卓が出る。上位 4 人が A 卓
     await page.goto(`/#/t/${t.id}/rank`);
     const top4 = await page.locator('.rank-name').evaluateAll((els) => els.slice(0, 4).map((e) => e.textContent));
-    await page.getByRole('button', { name: '卓割り' }).click();
+    await page.getByRole('button', { name: '卓・結果' }).click();
     const finalA = page.locator('.card').filter({ hasText: '第7回戦（決勝）' }).locator('.table-card').first();
     for (const name of top4) await expect(finalA).toContainText(name);
   });
@@ -253,10 +284,53 @@ test.describe('主催者', () => {
     await expect(names.nth(4)).toContainText('渡辺 5位');
     await expect(page.locator('.table-divider')).toHaveText(['A卓', 'B卓']);
 
-    // ポイントランキングに切り替えられる
+    // ポイントランキングに切り替えられる。大会終了時点では決勝 A 卓の帯は出さない
     await page.getByRole('button', { name: 'ポイント' }).click();
     await expect(page.locator('.rank-row')).toHaveCount(8);
+    await expect(page.getByLabel('いつの時点の順位か')).toHaveValue('now');
+    await expect(page.getByLabel('いつの時点の順位か').locator('option').first()).toHaveText('現在（大会終了時）');
+    await expect(page.locator('.final-line')).toHaveCount(0);
+
+    // 予選 6 回戦終了時に切り替えると、決勝卓を決めた時点の順位と帯が出る
+    await page.getByLabel('いつの時点の順位か').selectOption('6');
     await expect(page.locator('.final-line')).toBeVisible();
+    // 予選 1 回戦終了時は 1 回戦ぶんのポイントだけ（+60 / +10 / -20 / -50 が 2 人ずつ）
+    await page.getByLabel('いつの時点の順位か').selectOption('1');
+    await expect(page.locator('.rank-total')).toHaveText(['+60', '+60', '+10', '+10', '-20', '-20', '-50', '-50']);
+  });
+
+  test('卓・結果に各卓の着順とポイントが出て、主催者はそこから修正できる', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, results: resultsFor(t, [1]), organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/rank`);
+    await page.getByRole('button', { name: '卓・結果' }).click();
+
+    const round1 = page.locator('.card').filter({ hasText: '第1回戦' });
+    const tableA = round1.locator('.table-card').first();
+    const a = t.data.schedule['1'][0].players.map((id) => NAMES8[Number(id.slice(1)) - 1]);
+    // 卓の 1 人目がトップ（40,000 点 → +60）
+    await expect(tableA.locator('.table-line').first()).toContainText(`1着${a[0]}`);
+    await expect(tableA.locator('.tl-pt')).toHaveText(['+60', '+10', '-20', '-50']);
+    await expect(tableA.locator('.tl-score').first()).toHaveText('40.0');
+
+    // 主催者は「修正」から直せる
+    await tableA.getByRole('button', { name: '修正' }).click();
+    await fillScores(page, [10000, 20000, 30000, 40000]);
+    await page.getByRole('button', { name: '確認して上書き' }).click();
+    await page.getByRole('button', { name: '保存する' }).click();
+    await expect(page.locator('.toast.ok')).toHaveText('保存しました');
+    await expect(tableA.locator('.table-line').first()).toContainText(`1着${a[3]}`);
+    // まだ結果のない 2 回戦の卓は「入力」ボタン
+    await expect(page.locator('.card').filter({ hasText: '第2回戦' }).getByRole('button', { name: '入力' }).first()).toBeVisible();
+  });
+
+  test('参加者には修正ボタンが出ない', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, results: resultsFor(t, [1]), me: 'p1' });
+    await page.goto(`/#/t/${t.id}/rank`);
+    await page.getByRole('button', { name: '卓・結果' }).click();
+    await expect(page.locator('.tl-pt').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: '修正' })).toHaveCount(0);
   });
 
   test('主催者は結果を修正でき、ポイントが再計算される', async ({ page }) => {
