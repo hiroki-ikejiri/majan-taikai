@@ -2,6 +2,7 @@
 import { h, fmtPt, ptClass, fmtYen, toast } from '../ui.js';
 import { okaOf } from '../logic/scoring.js';
 import { finalLineGap, placeLabel } from '../logic/standings.js';
+import { compareNames } from '../logic/names.js';
 import { chipStatus, computeSettlement, feePerPerson, feeReady, isFeePrepaid } from '../logic/settlement.js';
 import { resultIdOf } from '../store/index.js';
 import { scoreForm, newDraft } from './scoreForm.js';
@@ -65,7 +66,7 @@ function renderPickName(ctx) {
         'div',
         { class: 'name-grid' },
         [...t.players]
-          .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+          .sort((a, b) => compareNames(a.name, b.name))
           .map((p) =>
             h(
               'button',

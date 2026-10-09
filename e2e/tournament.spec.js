@@ -261,6 +261,14 @@ test.describe('参加者', () => {
     await expect(page.getByRole('button', { name: '確認して保存' })).toBeEnabled();
   });
 
+  test('名前選びはゲスト1、ゲスト2…ゲスト10 の順に並ぶ', async ({ page }) => {
+    const names = Array.from({ length: 12 }, (_, i) => `ゲスト${i + 1}`);
+    const t = buildTournament({ names });
+    await seed(page, { tournament: t });
+    await page.goto(`/#/t/${t.id}`);
+    await expect(page.locator('.name-btn')).toHaveText(names);
+  });
+
   test('ルール画面に設定とルール文が出る', async ({ page }) => {
     const t = buildTournament();
     await seed(page, { tournament: t, me: 'p1' });
@@ -385,6 +393,8 @@ test.describe('主催者', () => {
     await expect(page.locator('.screen-table')).toHaveCount(2);
     await expect(page.locator('.screen-qr .qr svg')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.screen-rank-row')).toHaveCount(8);
+    // 主催者なら会場表示からもタイマーを操作できる
+    await expect(page.getByRole('button', { name: '一時停止' })).toBeVisible();
 
     // 45 分たつと予告、50 分で時間切れ
     // （QR の読み込みを待つ間も時計は進むので、秒までは決め打ちしない）
@@ -398,6 +408,22 @@ test.describe('主催者', () => {
     // 参加者のホームにも残り時間（時間切れ）が出る
     await page.goto(`/#/t/${t.id}`);
     await expect(page.locator('.hero .js-timer')).toHaveAttribute('data-state', 'over');
+  });
+
+  test('会場表示は 1 画面に収まり、主催者でなければタイマーの操作ボタンは出ない', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await context.addInitScript(() => localStorage.setItem('majan-force-demo', '1'));
+    const page = await context.newPage();
+    const names = Array.from({ length: 32 }, (_, i) => `ゲスト${i + 1}`);
+    const t = buildTournament({ names });
+    await seed(page, { tournament: t, results: resultsFor(t, [1]), me: 'p1' });
+    await page.goto(`/#/t/${t.id}/screen`);
+    await expect(page.locator('.screen-rank-row')).toHaveCount(32);
+    // スクロールせずに全員の順位が見える
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+    await expect(page.locator('.screen-rank-row').last()).toBeInViewport();
+    await expect(page.getByRole('button', { name: /開始/ })).toHaveCount(0);
+    await context.close();
   });
 
   test('タイマーは一時停止・再開できる', async ({ page }) => {
