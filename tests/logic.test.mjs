@@ -6,7 +6,9 @@ import { DEFAULT_RULES, calcHanchan, roundedBase, validateScores, okaOf } from '
 import {
   makePrelimSchedule, makeFinalTables, countMeets, countSeats, countUnmetPairs, roundsToMeetAll, seededRandom,
 } from '../public/js/logic/seating.js';
-import { computeStandings, finalLineGap } from '../public/js/logic/standings.js';
+import {
+  computeStandings, finalLineGap, finalBoundaryTies, finalOrder, unresolvedFinalTies, finalTablesMatchStandings,
+} from '../public/js/logic/standings.js';
 import { feePerPerson, chipStatus, computeSettlement } from '../public/js/logic/settlement.js';
 import { parseNamesFromMarkdownTable } from '../public/js/logic/names.js';
 
@@ -164,6 +166,75 @@ test('決勝ラインまでの差', () => {
   // 4 位は 発 (+10)、5 位は 西 (-19)
   assert.deepEqual(finalLineGap(st, 'p1'), { inside: true, gap: 32 }); // 南 +13 は 5 位に 32 リード
   assert.deepEqual(finalLineGap(st, 'p6'), { inside: false, gap: 30 }); // 中 -20 は 4 位まであと 30
+});
+
+// 同点の決め方のテスト用。卓ごとに「ポイントと着順」を決めておき、素点の計算はしない
+// games は [{ seats: [[playerId, 素点, ポイント, 着順]] }]
+function tieStandings(players, games) {
+  const outcomes = new Map();
+  const results = games.map((g, k) => {
+    // 素点の並びが同じ卓があっても区別できるように、回戦の番号をキーにする
+    outcomes.set(k + 1, { points: g.map((s) => s[2]), ranks: g.map((s) => s[3]) });
+    return { round: k + 1, table: 'A', seats: g.map(([playerId, score]) => ({ playerId, score })) };
+  });
+  let call = 0;
+  const stub = () => outcomes.get((call += 1));
+  return computeStandings(players, results, rules, stub);
+}
+const ab = [{ id: 'a', name: 'あ' }, { id: 'b', name: 'い' }];
+const ranksOf = (st) => st.map((r) => [r.id, r.rank]);
+
+test('合計ポイントが同点のときの決め方', () => {
+  // 1 位の回数：b の方が多い（合計はどちらも 0）
+  assert.deepEqual(ranksOf(tieStandings(ab, [
+    [['a', 30000, 0, 2], ['b', 30000, 10, 1]],
+    [['a', 30000, 0, 2], ['b', 30000, -10, 1]],
+  ])), [['b', 1], ['a', 2]]);
+  // 1 位の回数が同じなら最高素点：b の 45000 が上
+  assert.deepEqual(ranksOf(tieStandings(ab, [
+    [['a', 40000, 10, 1], ['b', 20000, -10, 3]],
+    [['a', 20000, -10, 3], ['b', 45000, 10, 1]],
+  ])), [['b', 1], ['a', 2]]);
+  // 最高素点も同じなら 2 位の回数：a が多い
+  assert.deepEqual(ranksOf(tieStandings(ab, [
+    [['a', 40000, 10, 1], ['b', 40000, 10, 1]],
+    [['a', 30000, -10, 2], ['b', 20000, -10, 3]],
+  ])), [['a', 1], ['b', 2]]);
+  // 2 位の回数も同じなら 3 位の回数：b が多い
+  assert.deepEqual(ranksOf(tieStandings(ab, [
+    [['a', 40000, 10, 1], ['b', 40000, 10, 1]],
+    [['a', 10000, -10, 4], ['b', 20000, -10, 3]],
+  ])), [['b', 1], ['a', 2]]);
+  // 全部同じなら同じ順位（並びは名前順）
+  assert.deepEqual(ranksOf(tieStandings(ab, [
+    [['a', 40000, 10, 1], ['b', 40000, 10, 1]],
+  ])), [['a', 1], ['b', 1]]);
+});
+
+test('決勝卓の境目をまたぐ完全な同点だけを主催者に選ばせる', () => {
+  const ranks = [1, 2, 3, 4, 4, 6, 7, 8];
+  const st = ranks.map((rank, i) => ({ id: `r${i}`, rank }));
+  // 4 位の r3・r4 は A 卓と B 卓の境目をまたぐ
+  assert.deepEqual(finalBoundaryTies(st), [{ rank: 4, ids: ['r3', 'r4'] }]);
+  assert.equal(unresolvedFinalTies(st).length, 1);
+  // 主催者が r4 を上の卓に選ぶと、r4 が A 卓、r3 が B 卓になる
+  assert.equal(unresolvedFinalTies(st, ['r4']).length, 0);
+  const order = finalOrder(st, ['r4']);
+  assert.deepEqual(order.slice(0, 5), ['r0', 'r1', 'r2', 'r4', 'r3']);
+  // 卓の中で同点（境目をまたがない）なら選ばなくてよい
+  const inside = [1, 2, 2, 4, 5, 6, 7, 8].map((rank, i) => ({ id: `s${i}`, rank }));
+  assert.deepEqual(finalBoundaryTies(inside), []);
+});
+
+test('確定済みの決勝卓が今の順位と合っているか', () => {
+  const st = [1, 2, 3, 4, 4, 6, 7, 8].map((rank, i) => ({ id: `r${i}`, rank }));
+  // 完全な同点の r3・r4 は、どちらが A 卓でもよい
+  assert.ok(finalTablesMatchStandings([['r0', 'r1', 'r2', 'r3'], ['r4', 'r5', 'r6', 'r7']], st));
+  assert.ok(finalTablesMatchStandings([['r0', 'r1', 'r2', 'r4'], ['r3', 'r5', 'r6', 'r7']], st));
+  // 卓の中の並びは関係ない
+  assert.ok(finalTablesMatchStandings([['r3', 'r2', 'r1', 'r0'], ['r7', 'r6', 'r5', 'r4']], st));
+  // 5 位以下の人が A 卓にいるのはずれている
+  assert.ok(!finalTablesMatchStandings([['r0', 'r1', 'r2', 'r5'], ['r3', 'r4', 'r6', 'r7']], st));
 });
 
 test('場代の割り勘は 100 円単位で切り上げ', () => {

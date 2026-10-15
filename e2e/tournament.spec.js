@@ -314,7 +314,8 @@ test.describe('参加者', () => {
     // 元のタブは、入力欄から指を離すと入力済みの表示に切り替わる（別タブの更新が反映される）
     await page.locator('.score-input').nth(3).blur();
     await expect(page.locator('.confirm-table')).toBeVisible();
-    await expect(page.getByText('間違いがあれば主催者に修正を頼んでください')).toBeVisible();
+    // 同じブラウザ（同じ端末）からの入力なので、このタブからも取り消せる
+    await expect(page.getByText('次の回戦が始まるまでなら、取り消して入れ直せます')).toBeVisible();
   });
 
   test('3 人分を入れると 4 人目の点数が自動で入る', async ({ page }) => {
@@ -366,6 +367,75 @@ test.describe('参加者', () => {
     await expect(page.locator('.seat-name')).toHaveText(names);
     await expect(page.locator('select.seat-select')).toHaveCount(0);
     await expect(page.getByText(/東|南家|西家|北家/)).toHaveCount(0);
+  });
+
+  test('自分が入力した結果は、次の回戦が始まるまで取り消して入れ直せる', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    await fillScores(page, [40000, 30000, 20000, 10000]);
+    await page.getByRole('button', { name: '確認して保存' }).click();
+    await page.getByRole('button', { name: '保存する' }).click();
+    await expect(page.locator('.toast.ok')).toHaveText('保存しました');
+
+    await page.goto(`/#/t/${t.id}/input`);
+    page.once('dialog', (dlg) => dlg.accept());
+    await page.getByRole('button', { name: '入力を取り消す' }).click();
+    await expect(page.locator('.toast.ok').last()).toHaveText('入力を取り消しました。もう一度入力してください');
+    // 卓は未入力に戻り、入力フォームが出る
+    await expect(page.locator('.score-input')).toHaveCount(4);
+  });
+
+  test('ほかの人の入力や、次の回戦が始まったあとの入力は取り消せない', async ({ page }) => {
+    const t = buildTournament();
+    const myTable = t.data.schedule['1'].find((tb) => tb.players.includes('p1'));
+    const results = resultsFor(t, [1]);
+    // 自分の卓はほかの端末から入力された結果
+    results[`1-${myTable.label}`].enteredByUid = 'someone-else';
+    await seed(page, { tournament: t, results, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    await page.locator('select').first().selectOption('1');
+    await expect(page.getByText('間違いがあれば主催者に修正を頼んでください')).toBeVisible();
+    await expect(page.getByRole('button', { name: '入力を取り消す' })).toHaveCount(0);
+  });
+
+  test('次の回戦の結果が入ったら、前の回戦の自分の入力は取り消せない', async ({ page }) => {
+    const t = buildTournament();
+    const myTable = t.data.schedule['1'].find((tb) => tb.players.includes('p1'));
+    const results = resultsFor(t, [1]);
+    results[`1-${myTable.label}`].enteredByUid = 'demo-guest';
+    // 次の回戦の結果が 1 卓だけ入っている
+    const next = t.data.schedule['2'][0];
+    Object.assign(results, resultsFor({ data: { schedule: { 2: [next] } } }, [2]));
+    await seed(page, { tournament: t, results, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    await page.locator('select').first().selectOption('1');
+    await expect(page.getByRole('heading', { name: `第1回戦 ${myTable.label}卓` })).toBeVisible();
+    await expect(page.getByRole('button', { name: '入力を取り消す' })).toHaveCount(0);
+  });
+
+  test('次の回戦のタイマーが始まったら、前の回戦の自分の入力は取り消せない', async ({ page }) => {
+    const t = buildTournament();
+    const myTable = t.data.schedule['1'].find((tb) => tb.players.includes('p1'));
+    const results = resultsFor(t, [1]);
+    results[`1-${myTable.label}`].enteredByUid = 'demo-guest';
+    t.data.timer = { round: 2, startedAt: Date.now(), pausedAt: null, pausedTotal: 0 };
+    await seed(page, { tournament: t, results, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    await page.locator('select').first().selectOption('1');
+    await expect(page.getByRole('heading', { name: `第1回戦 ${myTable.label}卓` })).toBeVisible();
+    await expect(page.getByRole('button', { name: '入力を取り消す' })).toHaveCount(0);
+  });
+
+  test('回戦の全卓がそろっても、次の回戦が始まる前なら自分の入力を取り消せる', async ({ page }) => {
+    const t = buildTournament();
+    const myTable = t.data.schedule['1'].find((tb) => tb.players.includes('p1'));
+    const results = resultsFor(t, [1]);
+    results[`1-${myTable.label}`].enteredByUid = 'demo-guest';
+    await seed(page, { tournament: t, results, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/input`);
+    await page.locator('select').first().selectOption('1');
+    await expect(page.getByRole('button', { name: '入力を取り消す' })).toBeVisible();
   });
 
   test('2 人が同点なら、上の着順にする人を選ぶまで保存できない', async ({ page }) => {
@@ -462,6 +532,35 @@ test.describe('主催者', () => {
     await page.getByRole('button', { name: '卓・結果' }).click();
     const finalA = page.locator('.card').filter({ hasText: '第7回戦（決勝）' }).locator('.table-card').first();
     for (const name of top4) await expect(finalA).toContainText(name);
+  });
+
+  test('決勝卓の境目で完全に同点の人がいれば、主催者が上の卓にする人を選ぶ', async ({ page }) => {
+    // 12 人・予選 1 回 ＋ 決勝。A 卓と B 卓の 2 着は素点もポイントも同じで、3 卓の 1 着の次（4 位）に並ぶ
+    const names = ['一郎', '二郎', '三郎', '四郎', '五郎', '六郎', '七郎', '八郎', '九郎', '十郎', '十一郎', '十二郎'];
+    const t = buildTournament({ names, rules: { rounds: 2, hasFinal: true } });
+    const [tableA, tableB, tableC] = t.data.schedule['1'];
+    const results = {
+      ...resultsFor({ data: { schedule: { 1: [tableA, tableB] } } }, [1], [40000, 30000, 20000, 10000]),
+      ...resultsFor({ data: { schedule: { 1: [tableC] } } }, [1], [40000, 29000, 19000, 12000]),
+    };
+    const nameOf = (id) => names[Number(id.slice(1)) - 1];
+    const [upper, lower] = [nameOf(tableA.players[1]), nameOf(tableB.players[1])];
+    await seed(page, { tournament: t, results, organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/admin`);
+
+    await expect(page.locator('.tie-question').first()).toContainText('完全に同点（4 位）');
+    await expect(page.getByRole('button', { name: 'この卓割りで確定' })).toBeDisabled();
+    await page.getByRole('button', { name: `${lower} を上の卓に` }).click();
+    await expect(page.locator('.tie-question')).toHaveCount(0);
+    await page.getByRole('button', { name: 'この卓割りで確定' }).click();
+    await expect(page.locator('.toast.ok')).toHaveText('決勝の卓を確定しました');
+
+    // 選んだ人が A 卓、もう 1 人が B 卓。確定後も「順位とずれている」とは言われない
+    const cards = page.locator('.card.hero .table-card');
+    await expect(cards.nth(0)).toContainText(lower);
+    await expect(cards.nth(1)).toContainText(upper);
+    await expect(page.getByText('今の順位とずれています')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '決勝の卓割り（確定済み）' })).toBeVisible();
   });
 
   test('全回戦が終わると最終結果（決勝卓の着順）とポイントランキングが出る', async ({ page }) => {
