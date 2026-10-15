@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DEFAULT_RULES, calcHanchan, roundedBase, validateScores, okaOf } from '../public/js/logic/scoring.js';
-import { makePrelimSchedule, makeFinalTables, countMeets, countSeats, seededRandom } from '../public/js/logic/seating.js';
+import {
+  makePrelimSchedule, makeFinalTables, countMeets, countSeats, countUnmetPairs, roundsToMeetAll, seededRandom,
+} from '../public/js/logic/seating.js';
 import { computeStandings, finalLineGap } from '../public/js/logic/standings.js';
 import { feePerPerson, chipStatus, computeSettlement } from '../public/js/logic/settlement.js';
 import { parseNamesFromMarkdownTable } from '../public/js/logic/names.js';
@@ -83,6 +85,52 @@ test('同じ卓（A 卓・B 卓…）に座り続けないように組む', () =
     // 20 人・予選 6 回：同じ卓は 2 回まで
     assert.ok(maxSeat(makePrelimSchedule(ids(20), 6, { random })) <= 2);
   }
+});
+
+const playerIds = (n) => Array.from({ length: n }, (_, i) => `p${i}`);
+
+// 1 人ごとの「一度も当たらない相手の数」
+const unmetPerPlayer = (schedule) => {
+  const ids = schedule[0].flat();
+  const meets = countMeets(schedule);
+  return ids.map((p) => ids.filter((q) => q !== p && !meets.has(p < q ? `${p}|${q}` : `${q}|${p}`)).length);
+};
+
+test('全員と当たるのに必要な予選の回数', () => {
+  assert.equal(roundsToMeetAll(4), 1);
+  assert.equal(roundsToMeetAll(16), 5);
+  assert.equal(roundsToMeetAll(20), 7);
+  assert.equal(roundsToMeetAll(24), 8);
+});
+
+test('回数が足りれば全員と 1 回以上当たるように組む', () => {
+  // 16 人・予選 5 回：全員とちょうど 1 回ずつ当たる
+  const s16 = makePrelimSchedule(playerIds(16), 5, { random: seededRandom(1) });
+  assert.equal(countUnmetPairs(s16), 0);
+  assert.equal(Math.max(...countMeets(s16).values()), 1);
+  // 20 人・予選 7 回：全員と当たり、同じ人とは 2 回まで
+  // （毎回必ず見つかるわけではないので、見つかる乱数の種で確かめる）
+  const s20 = makePrelimSchedule(playerIds(20), 7, { random: seededRandom(1) });
+  assert.equal(countUnmetPairs(s20), 0);
+  assert.ok(Math.max(...countMeets(s20).values()) <= 2);
+});
+
+test('回数が足りないときは、当たらない相手を少なく、特定の人に偏らないように組む', () => {
+  // 20 人・予選 6 回：当たれる相手は最大 18 人なので全員とは当たれない。
+  // 1 回戦ずつ決めるだけのやり方では 20 組以上が一度も当たらず、4 人と当たらない人も出ていた
+  for (let seed = 1; seed <= 3; seed += 1) {
+    const schedule = makePrelimSchedule(playerIds(20), 6, { random: seededRandom(seed) });
+    assert.ok(countUnmetPairs(schedule) <= 16, `一度も当たらない組 ${countUnmetPairs(schedule)}`);
+    assert.ok(Math.max(...unmetPerPlayer(schedule)) <= 3, `当たらない相手 最大 ${Math.max(...unmetPerPlayer(schedule))} 人`);
+    assert.ok(Math.max(...countMeets(schedule).values()) <= 2);
+  }
+});
+
+test('時間を決めて卓割りを作っても、全員を毎回 1 回ずつ入れる', () => {
+  const ids = playerIds(12);
+  const schedule = makePrelimSchedule(ids, 4, { random: seededRandom(1), timeLimitMs: 200 });
+  assert.equal(schedule.length, 4);
+  schedule.forEach((tables) => assert.deepEqual(tables.flat().sort(), [...ids].sort()));
 });
 
 test('4 の倍数でない人数はエラー', () => {

@@ -1,7 +1,7 @@
 // 主催者のトップ画面と、大会作成ウィザード（人数 → 名前 → ルール → 確認）
 import { h, toast, copyText, qrCode, errorText } from '../ui.js';
 import { DEFAULT_RULES, okaOf } from '../logic/scoring.js';
-import { makePrelimSchedule, TABLE_LABELS } from '../logic/seating.js';
+import { makePrelimSchedule, roundsToMeetAll, TABLE_LABELS } from '../logic/seating.js';
 import { parseNames, cleanNames, fillWithGuests, isGuestName } from '../logic/names.js';
 import { DEFAULT_RULE_SECTIONS } from '../defaultRules.js';
 
@@ -356,12 +356,29 @@ function stepNames(w, go, ctx) {
 // 予選の回数と決勝の有無。データ上は rules.rounds（決勝を含めた合計）と rules.hasFinal で持つ
 const prelimOf = (rules) => (rules.hasFinal ? rules.rounds - 1 : rules.rounds);
 
-function roundsEditor(rules, { onChange, locked }) {
+// 予選の卓割りを作るのにかける時間の上限（ミリ秒）。全員と当たる組み方が早く見つかればそこで終わる
+const SEATING_TIME_LIMIT_MS = 6000;
+
+// 「全員と当たるには予選が何回いるか」の目安の文。1 回戦で当たれるのは 3 人なので、回数が足りないと全員とは当たれない
+export function meetAllHint(playerCount, prelim) {
+  if (!(playerCount >= 4) || !(prelim >= 1)) return '';
+  const need = roundsToMeetAll(playerCount);
+  if (prelim >= need) {
+    // 回数が足りていても、人数によっては全員と当たる組み方が作れない（見つからない）ことがあるので言い切らない
+    return `${playerCount} 人で全員と当たるには、予選が最低 ${need} 回いります。今の ${prelim} 回なら、できるだけ全員と当たるように組みます（数組は当たらないこともあります）`;
+  }
+  const missing = playerCount - 1 - prelim * 3;
+  return `${playerCount} 人で全員と当たるには予選 ${need} 回が必要です。今の ${prelim} 回だと、1 人あたり ${missing} 人以上とは当たりません`;
+}
+
+function roundsEditor(rules, { onChange, locked, playerCount }) {
   const summary = h('p', { class: 'muted rounds-summary' });
+  const hint = h('p', { class: 'muted meet-all-hint' });
   const drawSummary = () => {
     summary.textContent = rules.hasFinal
       ? `予選 ${prelimOf(rules)} 回 ＋ 決勝 1 回（全 ${rules.rounds} 回戦）`
       : `全 ${rules.rounds} 回戦（決勝なし）`;
+    hint.textContent = meetAllHint(playerCount, prelimOf(rules));
   };
   drawSummary();
   if (locked) {
@@ -416,6 +433,7 @@ function roundsEditor(rules, { onChange, locked }) {
       )),
     ),
     summary,
+    hint,
   );
 }
 
@@ -449,7 +467,8 @@ export function feeModeSwitch(rules, onSelect) {
 
 // 数値ルールとルール文の編集欄（大会作成と主催者画面で共用）
 // roundsLocked が true のとき（大会作成後）は、回戦の設定を変えられないように表示だけにする
-export function rulesEditor(rules, sections, { onChange, roundsLocked = false } = {}) {
+// playerCount（人数）を渡すと、回戦の数の下に「全員と当たるには予選が何回いるか」の目安を出す
+export function rulesEditor(rules, sections, { onChange, roundsLocked = false, playerCount } = {}) {
   // after は値が変わったあとに呼ぶ処理（オカの表示の更新など）
   const num = (label, key, opts = {}, after) =>
     h(
@@ -538,7 +557,7 @@ export function rulesEditor(rules, sections, { onChange, roundsLocked = false } 
       umaLabel,
     ),
     h('h3', {}, '回戦'),
-    roundsEditor(rules, { onChange, locked: roundsLocked }),
+    roundsEditor(rules, { onChange, locked: roundsLocked, playerCount }),
     h('h3', {}, 'お金'),
     h('div', { class: 'field' }, h('span', {}, 'レート（1000 点 = 1pt あたりの金額）'),
       h('div', { class: 'chip-grid' }, RATE_PRESETS.map(([label, yen]) =>
@@ -605,7 +624,7 @@ function stepRules(w, go, ctx) {
       ),
     );
   }
-  section.append(rulesEditor(w.rules, w.sections));
+  section.append(rulesEditor(w.rules, w.sections, { playerCount: w.count }));
   section.append(
     h('div', { class: 'row between sticky-actions' },
       h('button', { class: 'btn', onClick: () => go(2) }, '戻る'),
@@ -635,16 +654,23 @@ function stepConfirm(w, go, ctx, store, state) {
       h('dt', {}, 'お金'), h('dd', {}, `1000 点 ${w.rules.rate} 円・チップ ${w.rules.chipUnit} 円`),
       h('dt', {}, '場代'), h('dd', {}, w.rules.feeMode === 'prepaid' ? '事前に徴収済み' : '精算で割り勘'),
     ),
-    h('p', { class: 'muted' }, '予選の卓割りは、同じ人となるべく当たらないように自動で作ります。'),
+    h('p', { class: 'muted' }, '予選の卓割りは、全員とできるだけ 1 回以上当たり、同じ人とは何度も当たらないように自動で作ります。作成には数秒かかります。'),
+    h('p', { class: 'muted meet-all-hint' }, meetAllHint(w.count, prelim)),
   );
   section.append(
     h('div', { class: 'row between sticky-actions' },
       h('button', { class: 'btn', onClick: () => go(3) }, '戻る'),
       h('button', { class: 'btn primary', onClick: async (e) => {
-        e.currentTarget.disabled = true;
+        // await のあとは e.currentTarget が使えなくなるので、先にボタンを覚えておく
+        const button = e.currentTarget;
+        const label = button.textContent;
+        button.disabled = true;
+        button.textContent = '卓割りを作成中…（数秒かかります）';
         try {
+          // 卓割りの計算中は画面が止まるので、先に「作成中」の表示を画面に出しておく
+          await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
           const players = w.names.map((name, i) => ({ id: `p${i + 1}`, name }));
-          const prelimSchedule = makePrelimSchedule(players.map((p) => p.id), prelim);
+          const prelimSchedule = makePrelimSchedule(players.map((p) => p.id), prelim, { timeLimitMs: SEATING_TIME_LIMIT_MS });
           const schedule = {};
           prelimSchedule.forEach((tables, r) => {
             schedule[String(r + 1)] = tables.map((ids, i) => ({ label: TABLE_LABELS[i], players: ids }));
@@ -667,7 +693,8 @@ function stepConfirm(w, go, ctx, store, state) {
           ctx.navigate(`#/t/${id}/admin/share`);
         } catch (err) {
           toast(`作成できませんでした。${errorText(err)}`, 'error');
-          e.currentTarget.disabled = false;
+          button.disabled = false;
+          button.textContent = label;
         }
       } }, 'この内容で大会を作る'),
     ),
