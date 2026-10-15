@@ -63,6 +63,17 @@ export function deriveTournament(t, results) {
   const tableOfPlayer = (round, playerId) => tablesOf(round)?.find((tb) => tb.players.includes(playerId)) || null;
   const nameOf = (id) => playerMap.get(id)?.name || '（不明）';
 
+  // 参加者が自分の入力を取り消せるか。入力に使った端末（匿名ログインの uid）からで、
+  // 次の回戦が始まる前（次の回戦の結果がまだ 1 卓も無く、タイマーも始まっていない）だけ取り消せる。
+  // 前の回戦の結果を参加者が変えられないようにするため
+  const canWithdraw = (result, uid) => {
+    if (!result || !uid || t.status === 'settled') return false;
+    if (result.enteredByUid !== uid) return false;
+    if (validResults.some((r) => r.round > result.round)) return false;
+    if (t.timer && t.timer.round > result.round) return false;
+    return true;
+  };
+
   return {
     rules,
     players,
@@ -85,5 +96,6 @@ export function deriveTournament(t, results) {
     tableStatus,
     nameOf,
     settled: t.status === 'settled',
+    canWithdraw,
   };
 }
