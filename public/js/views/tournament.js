@@ -1,7 +1,7 @@
 // 参加者の画面（名前選び・ホーム・結果入力・順位・精算・ルール）
 import { h, fmtPt, ptClass, fmtYen, toast, errorText, modal } from '../ui.js';
 import { okaOf } from '../logic/scoring.js';
-import { finalLineGap, placeLabel } from '../logic/standings.js';
+import { TIEBREAKS, finalLineGap, placeLabel } from '../logic/standings.js';
 import { compareNames } from '../logic/names.js';
 import { chipStatus, computeSettlement, feePerPerson, feeReady, isFeePrepaid } from '../logic/settlement.js';
 import { resultIdOf } from '../store/index.js';
@@ -176,7 +176,7 @@ function renderHome(ctx, me) {
             h(
               'span',
               { class: 'stat-value small' },
-              gap.gap === 0 ? '同点（同点のときは名前順で決まります）' : gap.inside ? `圏内（5 位と ${gap.gap}pt 差）` : `あと ${gap.gap}pt`,
+              gap.gap === 0 ? `同点（${gap.inside ? '今は圏内' : '今は圏外'}。1 位の回数などで決まります）` : gap.inside ? `圏内（5 位と ${gap.gap}pt 差）` : `あと ${gap.gap}pt`,
             ),
           ),
         h('a', { class: 'btn big', href: `#/t/${t.id}/rank` }, '全体順位を見る'),
@@ -728,7 +728,7 @@ function renderRules(ctx) {
         h('li', {}, `${r.startPoints.toLocaleString()} 点持ち ${r.returnPoints.toLocaleString()} 点返し（百の位は五捨六入）`),
         h('li', {}, `ウマ ${r.uma.map(fmtPt).join(' / ')}、オカ +${okaOf(r)}`),
         h('li', {}, '卓の中で同点のときは、結果を入力するときに上の着順にする人を選ぶ'),
-        r.hasFinal && h('li', {}, '決勝卓の境目（4 位と 5 位など）でポイントが同点のときは、名前順で決まります'),
+        h('li', {}, `合計ポイントが同点のときは、${TIEBREAKS.map((tb) => tb.label).join(' → ')} の順に比べて順位を決める${r.hasFinal ? '（それでも同じで決勝卓の境目にかかるときは、主催者が決める）' : ''}`),
         h('li', {}, r.hasFinal ? `予選 ${r.rounds - 1} 回 ＋ 決勝 1 回（決勝は成績順の卓）` : `${r.rounds} 回戦`),
         h('li', {}, `1000 点（1pt）${r.rate} 円、チップ 1 枚 ${r.chipUnit} 円`),
         h('li', {}, isFeePrepaid(r) ? '場代は事前に徴収済み（精算には含めません）' : '場代は精算時に人数で割り勘'),

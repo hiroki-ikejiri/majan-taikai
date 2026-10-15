@@ -3,11 +3,99 @@ import { h, fmtPt, toast, copyText, errorText } from '../ui.js';
 import { buildResultMarkdown, resultFileName } from '../logic/exportMarkdown.js';
 import { DEFAULT_RULES } from '../logic/scoring.js';
 import { makeFinalTables, TABLE_LABELS } from '../logic/seating.js';
+import { TIEBREAKS, finalOrder, finalTablesMatchStandings, unresolvedFinalTies } from '../logic/standings.js';
 import { chipStatus, feeReady, isFeePrepaid } from '../logic/settlement.js';
 import { openResultEditor, statusBadge } from './resultEditor.js';
 import { timerDisplay } from './timerView.js';
 import { startTimer, pauseTimer, resumeTimer } from '../logic/timer.js';
 import { rulesEditor, shareCard, feeModeSwitch, rulesProblem } from './organizer.js';
+
+// 決勝卓の境目で決められない同点のとき、主催者が選んだ順番（先に選ばれた人ほど上の卓）。
+// 結果が届くたびに画面を作り直しても消えないよう、大会ごとに覚えておく
+const finalTiePicks = new Map();
+
+const TIEBREAK_TEXT = `同点のときは ${TIEBREAKS.map((tb) => tb.label).join(' → ')} の順に比べます`;
+
+// 決勝の卓割りのカード。予選が終わってから決勝が始まるまで出す
+function finalTablesCard(ctx, finalRound, hasFinalTables) {
+  const { store, state } = ctx;
+  const t = state.t;
+  const d = state.d;
+  const card = h('section', { class: 'card hero' });
+  const picks = finalTiePicks.get(t.id) || [];
+  finalTiePicks.set(t.id, picks);
+
+  const draw = () => {
+    const ties = unresolvedFinalTies(d.standings, picks);
+    const proposal = makeFinalTables(finalOrder(d.standings, picks));
+    const current = hasFinalTables ? d.tablesOf(finalRound).map((tb) => tb.players) : null;
+    // 確定後に予選の結果を直して順位が変わると、確定済みの卓と今の順位がずれる
+    const changed = current && !finalTablesMatchStandings(current, d.standings);
+    const rankOf = (id) => d.standings.find((s) => s.id === id)?.rank;
+    const shown = current && !changed ? current : proposal;
+    const confirmTables = async () => {
+      if (hasFinalTables && !window.confirm('決勝の卓を今の順位で作り直します。参加者に発表済みの卓が変わりますが、よろしいですか？')) return;
+      const schedule = { ...t.schedule, [String(finalRound)]: proposal.map((ids, i) => ({ label: TABLE_LABELS[i], players: ids })) };
+      try {
+        await store.updateTournament(t.id, { schedule });
+        toast(hasFinalTables ? '決勝の卓を作り直しました' : '決勝の卓を確定しました', 'ok');
+      } catch (e) {
+        toast(`確定できませんでした。${errorText(e)}`, 'error');
+      }
+    };
+    const needConfirm = !hasFinalTables || changed;
+    card.replaceChildren(
+      ...[
+        h('h2', {}, hasFinalTables && !changed ? '決勝の卓割り（確定済み）' : '予選終了！決勝の卓を確定'),
+        h('p', { class: 'muted' }, hasFinalTables && !changed
+          ? '参加者に発表している決勝の卓です。'
+          : `予選の順位で、上位 4 人から A 卓・B 卓…に入ります。${TIEBREAK_TEXT}。`),
+        changed && h('p', { class: 'error-line' }, '確定したあとに予選の結果が直され、今の順位とずれています。'),
+        // 同点の決め方でも決まらず、卓の境目をまたぐ人がいれば、上の卓にする人を選んでもらう
+        ...(needConfirm ? ties.map((g) => finalTieQuestion(g, d, picks, draw)) : []),
+        needConfirm && picks.length > 0 && h('button', { type: 'button', class: 'btn link', onClick: () => { picks.length = 0; draw(); } }, '同点の順番を選び直す'),
+        h(
+          'div',
+          { class: 'table-grid' },
+          shown.map((ids, i) =>
+            h('div', { class: 'table-card' }, h('strong', {}, `${TABLE_LABELS[i]}卓`), ids.map((id) => h('div', {}, `${rankOf(id)}位 ${d.nameOf(id)}`))),
+          ),
+        ),
+        needConfirm && h(
+          'button',
+          { class: 'btn primary big', disabled: ties.length > 0, onClick: confirmTables },
+          hasFinalTables ? '今の順位で作り直す' : 'この卓割りで確定',
+        ),
+      ].filter(Boolean),
+    );
+  };
+  draw();
+  return card;
+}
+
+// 決められない同点のグループについて「上の卓にする人」を選ぶ質問。3 人以上なら上から順番にタップしてもらう
+function finalTieQuestion(group, d, picks, redraw) {
+  const picked = group.ids.filter((id) => picks.includes(id)).sort((a, b) => picks.indexOf(a) - picks.indexOf(b));
+  const names = group.ids.map((id) => `${d.nameOf(id)}さん`).join('・');
+  const step = picked.length + 1;
+  return h(
+    'div',
+    { class: 'tie-question' },
+    h('p', {}, group.ids.length === 2
+      ? `${names}が完全に同点（${group.rank} 位）です。上の卓にする人を選んでください`
+      : `${names}の ${group.ids.length} 人が完全に同点（${group.rank} 位）です。上の卓にする人から順番にタップしてください（いま ${step} 番目）`),
+    h('p', { class: 'muted' }, `合計ポイントも、${TIEBREAKS.map((tb) => tb.label).join('・')}も同じです。じゃんけんなどで決めてください`),
+    picked.length > 0 && h('p', { class: 'muted' }, picked.map((id, k) => `${k + 1} 番目 ${d.nameOf(id)}`).join('、')),
+    h(
+      'div',
+      { class: 'row' },
+      group.unpicked.map((id) =>
+        h('button', { type: 'button', class: 'btn tie-btn', onClick: () => { picks.push(id); redraw(); } },
+          group.ids.length === 2 ? `${d.nameOf(id)} を上の卓に` : `${step} 番目は ${d.nameOf(id)}`),
+      ),
+    ),
+  );
+}
 
 const roundTitle = (d, r) => (d.rules.hasFinal && r === d.rules.rounds ? `第${r}回戦（決勝）` : `第${r}回戦`);
 
@@ -68,41 +156,7 @@ function renderProgress(ctx) {
     const finalRound = d.rules.rounds;
     const hasFinalTables = Boolean(d.tablesOf(finalRound));
     const finalStarted = hasFinalTables && d.tablesOf(finalRound).some((tb) => d.resultOf(finalRound, tb.label));
-    if (d.prelimDone && !finalStarted) {
-      const proposal = makeFinalTables(d.standings.map((s) => s.id));
-      const current = hasFinalTables ? d.tablesOf(finalRound).map((tb) => tb.players) : null;
-      // 確定後に予選の結果を直して順位が変わると、確定済みの卓と今の順位の案がずれる
-      const changed = current && JSON.stringify(current) !== JSON.stringify(proposal);
-      const rankOf = (id) => d.standings.find((s) => s.id === id)?.rank;
-      const confirmTables = async () => {
-        if (hasFinalTables && !window.confirm('決勝の卓を今の順位で作り直します。参加者に発表済みの卓が変わりますが、よろしいですか？')) return;
-        const schedule = { ...t.schedule, [String(finalRound)]: proposal.map((ids, i) => ({ label: TABLE_LABELS[i], players: ids })) };
-        try {
-          await store.updateTournament(t.id, { schedule });
-          toast(hasFinalTables ? '決勝の卓を作り直しました' : '決勝の卓を確定しました', 'ok');
-        } catch (e) {
-          toast(`確定できませんでした。${errorText(e)}`, 'error');
-        }
-      };
-      wrap.append(
-        h(
-          'section',
-          { class: 'card hero' },
-          h('h2', {}, hasFinalTables ? '決勝の卓割り（確定済み）' : '予選終了！決勝の卓を確定'),
-          h('p', { class: 'muted' }, hasFinalTables ? '参加者に発表している決勝の卓です。' : '予選の順位で、上位 4 人から A 卓・B 卓…に入ります。同点のときは名前順です。'),
-          h(
-            'div',
-            { class: 'table-grid' },
-            (current || proposal).map((ids, i) =>
-              h('div', { class: 'table-card' }, h('strong', {}, `${TABLE_LABELS[i]}卓`), ids.map((id) => h('div', {}, `${rankOf(id)}位 ${d.nameOf(id)}`))),
-            ),
-          ),
-          changed && h('p', { class: 'error-line' }, '確定したあとに予選の結果が直され、今の順位とずれています。'),
-          (!hasFinalTables || changed) &&
-            h('button', { class: 'btn primary big', onClick: confirmTables }, hasFinalTables ? '今の順位で作り直す' : 'この卓割りで確定'),
-        ),
-      );
-    }
+    if (d.prelimDone && !finalStarted) wrap.append(finalTablesCard(ctx, finalRound, hasFinalTables));
   }
 
   // 回戦ごとの入力状況
