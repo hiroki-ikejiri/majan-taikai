@@ -326,7 +326,15 @@ function renderInput(ctx, me) {
   const section = h('section', { class: 'card' }, h('h2', {}, `${roundTitle(d, round)} ${table.label}卓`), picker);
 
   if (existing) {
-    section.append(resultTable(d, existing), h('p', { class: 'muted' }, `入力: ${existing.enteredByName || '—'}。間違いがあれば主催者に修正を頼んでください。`));
+    section.append(resultTable(d, existing));
+    if (d.canWithdraw(existing, state.user?.uid)) {
+      section.append(
+        h('p', { class: 'muted' }, `入力: ${existing.enteredByName || '—'}。間違えたときは、次の回戦が始まるまでなら、取り消して入れ直せます。`),
+        h('button', { type: 'button', class: 'btn danger', onClick: () => withdrawResult(ctx, rid) }, '入力を取り消す'),
+      );
+    } else {
+      section.append(h('p', { class: 'muted' }, `入力: ${existing.enteredByName || '—'}。間違いがあれば主催者に修正を頼んでください。`));
+    }
     return section;
   }
 
@@ -338,7 +346,8 @@ function renderInput(ctx, me) {
       rules: d.rules,
       onSubmit: async (seats) => {
         try {
-          await store.submitResult(t.id, rid, { round, table: table.label, seats, enteredBy: me, enteredByName: d.nameOf(me) });
+          // 入力した端末を覚えておく（その端末からだけ、次の回戦が始まるまで取り消せる）
+          await store.submitResult(t.id, rid, { round, table: table.label, seats, enteredBy: me, enteredByName: d.nameOf(me), enteredByUid: state.user?.uid || null });
           delete state.drafts[rid];
           state.inputSel = null;
           toast('保存しました', 'ok');
@@ -360,6 +369,24 @@ function renderInput(ctx, me) {
     }),
   );
   return section;
+}
+
+// 自分の入力を取り消す。取り消すと卓は「未入力」に戻り、もう一度入力できる
+async function withdrawResult(ctx, rid) {
+  const { state, store } = ctx;
+  if (!window.confirm('この卓の結果を取り消します。取り消したあとは、もう一度入力してください。よろしいですか？')) return;
+  try {
+    await store.deleteResult(state.t.id, rid);
+    toast('入力を取り消しました。もう一度入力してください', 'ok');
+  } catch (e) {
+    toast(
+      String(e.code || '').includes('permission-denied')
+        ? '次の回戦が始まったため取り消せませんでした。主催者に修正を頼んでください'
+        : `取り消せませんでした。${errorText(e)}`,
+      'error',
+    );
+  }
+  ctx.rerender();
 }
 
 // ===== 全体順位・卓割り =====

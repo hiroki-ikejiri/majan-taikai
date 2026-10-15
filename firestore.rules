@@ -2,7 +2,8 @@ rules_version = '2';
 
 // 麻雀大会スコアの権限ルール
 //   主催者 … Google ログイン。自分の大会の設定・卓割り・場代・結果の修正ができる
-//   参加者 … 匿名ログイン（画面上はログイン操作なし）。結果の新規入力とチップ入力だけできる
+//   参加者 … 匿名ログイン（画面上はログイン操作なし）。結果の新規入力とチップ入力、
+//            自分が入力した結果の取り消し（次の回戦のタイマーが始まるまで）ができる
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -26,6 +27,12 @@ service cloud.firestore {
       return tournament(tid).status != 'settled';
     }
 
+    // 主催者がまだ round より後の回戦のタイマーを始めていないか（タイマーが無ければ始まっていない）
+    function timerNotPast(tid, round) {
+      let timer = tournament(tid).get('timer', null);
+      return timer == null || timer.get('round', 0) <= round;
+    }
+
     match /tournaments/{tid} {
       // 大会 ID を知っている人（共有 URL を受け取った人）だけが読める
       allow get: if signedIn();
@@ -39,17 +46,25 @@ service cloud.firestore {
         && request.resource.data.ownerUid == resource.data.ownerUid;
       allow delete: if isGoogle() && resource.data.ownerUid == request.auth.uid;
 
-      // 結果。参加者は「まだ無い卓」だけ作れる（二重入力の防止）。修正・削除は主催者だけ
+      // 結果。参加者は「まだ無い卓」だけ作れる（二重入力の防止）。修正は主催者だけ。
+      // 削除は主催者と、入力した本人（同じ端末）。本人は次の回戦のタイマーが始まるまでだけ消せる
+      // （「次の回戦の結果が入ったら消せない」は画面側で止める。ルールでは別の卓の結果を数えられないため）
       match /results/{rid} {
         allow read: if signedIn();
         allow create: if signedIn()
           && (isOpen(tid) || isOwner(tid))
+          && request.resource.data.get('enteredByUid', null) in [null, request.auth.uid]
           && rid == string(request.resource.data.round) + '-' + request.resource.data.table
           && request.resource.data.seats.size() == 4
           && request.resource.data.seats[0].score + request.resource.data.seats[1].score
              + request.resource.data.seats[2].score + request.resource.data.seats[3].score
              == tournament(tid).rules.startPoints * 4;
-        allow update, delete: if isOwner(tid);
+        allow update: if isOwner(tid);
+        allow delete: if isOwner(tid)
+          || (signedIn()
+            && isOpen(tid)
+            && resource.data.get('enteredByUid', null) == request.auth.uid
+            && timerNotPast(tid, resource.data.round));
       }
 
       // チップ枚数。精算確定までは参加者も入力できる
