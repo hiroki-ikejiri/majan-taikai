@@ -53,7 +53,8 @@ test.describe('大会作成', () => {
     await expect(page.getByText('事前に徴収済み')).toBeVisible();
     await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
 
-    await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible();
+    // 卓割りの作成に数秒かかるので長めに待つ
+    await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('.url-box')).toContainText('#/t/');
     // QR コードの部品は cdnjs から読み込むので、通信が遅いときのために長めに待つ
     await expect(page.locator('.qr svg')).toBeVisible({ timeout: 20_000 });
@@ -86,7 +87,8 @@ test.describe('大会作成', () => {
     await page.getByRole('button', { name: '次へ（ルール）' }).click();
     await page.getByRole('button', { name: '次へ（確認）' }).click();
     await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
-    await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible();
+    // 卓割りの作成に数秒かかるので長めに待つ
+    await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible({ timeout: 15_000 });
 
     // 仮の名前は過去の参加者に残らない
     await page.goto('/#/new');
@@ -126,6 +128,10 @@ test.describe('大会作成', () => {
     await page.getByRole('button', { name: '次へ（ルール）' }).click();
 
     await expect(page.locator('.rounds-summary')).toHaveText('予選 6 回 ＋ 決勝 1 回（全 7 回戦）');
+    // 全員と当たるには予選が何回いるかの目安が出る
+    await expect(page.locator('.meet-all-hint')).toHaveText(/8 人で全員と当たるには、予選が最低 3 回いります。今の 6 回なら/);
+    await page.getByLabel('予選の回数').fill('1');
+    await expect(page.locator('.meet-all-hint')).toHaveText('8 人で全員と当たるには予選 3 回が必要です。今の 1 回だと、1 人あたり 4 人以上とは当たりません');
     await page.getByRole('button', { name: '7回', exact: true }).click();
     await expect(page.locator('.rounds-summary')).toHaveText('予選 7 回 ＋ 決勝 1 回（全 8 回戦）');
     await page.getByRole('button', { name: '決勝なし' }).click();
@@ -137,7 +143,11 @@ test.describe('大会作成', () => {
 
     await page.getByRole('button', { name: '次へ（確認）' }).click();
     await expect(page.getByText('予選 7 回 ＋ 決勝 1 回')).toBeVisible();
+    await expect(page.locator('.meet-all-hint')).toHaveText(/予選が最低 3 回いります。今の 7 回なら/);
     await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
+    // 作っている間は「作成中」と出る
+    await expect(page.getByRole('button', { name: /卓割りを作成中/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible({ timeout: 15_000 });
 
     // 作成後の設定では回戦の数は変えられない
     await page.getByRole('link', { name: '設定' }).click();
@@ -214,6 +224,8 @@ test.describe('大会作成', () => {
     await page.getByRole('button', { name: '50円（点5）' }).click();
     await page.getByRole('button', { name: '次へ（確認）' }).click();
     await page.getByRole('button', { name: 'この内容で大会を作る' }).click();
+    // 卓割りの作成に数秒かかるので、作り終わるのを待ってから次へ進む
+    await expect(page.getByRole('heading', { name: '参加者に共有' })).toBeVisible({ timeout: 15_000 });
 
     // 2 つ目の大会では、たたんだ欄から選ぶ
     await page.goto('/#/new');
