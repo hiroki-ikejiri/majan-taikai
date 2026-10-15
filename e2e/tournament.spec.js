@@ -464,6 +464,35 @@ test.describe('主催者', () => {
     for (const name of top4) await expect(finalA).toContainText(name);
   });
 
+  test('決勝卓の境目で完全に同点の人がいれば、主催者が上の卓にする人を選ぶ', async ({ page }) => {
+    // 12 人・予選 1 回 ＋ 決勝。A 卓と B 卓の 2 着は素点もポイントも同じで、3 卓の 1 着の次（4 位）に並ぶ
+    const names = ['一郎', '二郎', '三郎', '四郎', '五郎', '六郎', '七郎', '八郎', '九郎', '十郎', '十一郎', '十二郎'];
+    const t = buildTournament({ names, rules: { rounds: 2, hasFinal: true } });
+    const [tableA, tableB, tableC] = t.data.schedule['1'];
+    const results = {
+      ...resultsFor({ data: { schedule: { 1: [tableA, tableB] } } }, [1], [40000, 30000, 20000, 10000]),
+      ...resultsFor({ data: { schedule: { 1: [tableC] } } }, [1], [40000, 29000, 19000, 12000]),
+    };
+    const nameOf = (id) => names[Number(id.slice(1)) - 1];
+    const [upper, lower] = [nameOf(tableA.players[1]), nameOf(tableB.players[1])];
+    await seed(page, { tournament: t, results, organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/admin`);
+
+    await expect(page.locator('.tie-question').first()).toContainText('完全に同点（4 位）');
+    await expect(page.getByRole('button', { name: 'この卓割りで確定' })).toBeDisabled();
+    await page.getByRole('button', { name: `${lower} を上の卓に` }).click();
+    await expect(page.locator('.tie-question')).toHaveCount(0);
+    await page.getByRole('button', { name: 'この卓割りで確定' }).click();
+    await expect(page.locator('.toast.ok')).toHaveText('決勝の卓を確定しました');
+
+    // 選んだ人が A 卓、もう 1 人が B 卓。確定後も「順位とずれている」とは言われない
+    const cards = page.locator('.card.hero .table-card');
+    await expect(cards.nth(0)).toContainText(lower);
+    await expect(cards.nth(1)).toContainText(upper);
+    await expect(page.getByText('今の順位とずれています')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '決勝の卓割り（確定済み）' })).toBeVisible();
+  });
+
   test('全回戦が終わると最終結果（決勝卓の着順）とポイントランキングが出る', async ({ page }) => {
     const t = buildTournament();
     // 決勝 A 卓は p1〜p4。北家（p4）がトップ、東家（p1）がラス
