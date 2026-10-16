@@ -166,6 +166,9 @@ async function shootAll() {
     await shot(page, '08-admin-progress');
     await page.goto(`${BASE}/#/t/${playing.id}/admin/settings`);
     await shot(page, '09-admin-settings');
+    // 設定タブのいちばん下（大会の削除）
+    await page.locator('.card').filter({ hasText: '大会の削除' }).scrollIntoViewIfNeeded();
+    await shot(page, '25-admin-delete', { top: false });
     await page.context().close();
   }
   {
@@ -200,11 +203,54 @@ async function shootAll() {
     await inputs.nth(2).fill('300');
     await page.locator('h2').first().click();
     await shot(page, '16-tie', { fullPage: true });
+    await page.context().close();
+  }
+  {
+    // 参加者：自分が入力した結果を取り消す（第3回戦の自分の卓を、この端末から入力した状態）
+    const myTable = playing.data.schedule['3'].find((tb) => tb.players.includes('p1'));
+    const own = resultsFor(playing, [3])[`3-${myTable.label}`];
+    // デモモードの参加者の端末 ID
+    own.enteredByUid = 'demo-guest';
+    own.enteredByName = '池尻';
+    const page = await device(PHONE, { tournament: playing, results: { ...playingResults, [`3-${myTable.label}`]: own }, me: 'p1' });
+    await page.goto(`${BASE}/#/t/${playing.id}/input`);
+    await page.getByRole('button', { name: '入力を取り消す' }).waitFor();
+    await shot(page, '23-undo', { fullPage: true });
+    await page.context().close();
+  }
+  {
+    const page = await device(PHONE, { tournament: playing, results: playingResults, me: 'p1' });
     await page.goto(`${BASE}/#/t/${playing.id}/rank`);
     await page.getByRole('button', { name: 'ポイント順位' }).click();
     await shot(page, '17-rank');
     await page.getByRole('button', { name: '卓・結果' }).click();
     await shot(page, '18-tables');
+    await page.context().close();
+  }
+
+  // ===== 決勝卓の境目で完全に同点（12 人・予選 1 回 ＋ 決勝） =====
+  {
+    // A 卓と B 卓の 2 着は素点もポイントも同じで、3 卓の 1 着の次（4 位）に並ぶ
+    const t = buildTournament({ names: NAMES16.slice(0, 12), rules: { rounds: 2, hasFinal: true } });
+    t.data.name = '第12回大会';
+    t.data.date = '2026-10-18';
+    const scoresOf = { A: [40000, 30000, 20000, 10000], B: [40000, 30000, 20000, 10000], C: [40000, 29000, 19000, 12000] };
+    const results = {};
+    t.data.schedule['1'].forEach((tb) => {
+      results[`1-${tb.label}`] = {
+        round: 1,
+        table: tb.label,
+        seats: tb.players.map((playerId, i) => ({ playerId, score: scoresOf[tb.label][i] })),
+        enteredBy: tb.players[0],
+        enteredByName: '',
+        enteredAt: 1,
+      };
+    });
+    const page = await device(PHONE, { tournament: t, results, organizer: true });
+    await page.goto(`${BASE}/#/t/${t.id}/admin`);
+    await page.locator('.tie-question').first().waitFor();
+    await page.locator('.card.hero').scrollIntoViewIfNeeded();
+    await shot(page, '24-final-tie', { top: false });
     await page.context().close();
   }
 
