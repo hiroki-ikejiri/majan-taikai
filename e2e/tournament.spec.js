@@ -1,6 +1,6 @@
 // 大会の流れを画面から通して確かめる E2E テスト（デモモード）
 import { test, expect } from './fixtures.js';
-import { buildTournament, resultsFor, seed, fillScores, NAMES8 } from './helpers.js';
+import { buildTournament, resultsFor, seed, fillScores, NAMES8, DEMO_KEY } from './helpers.js';
 
 test.describe('大会作成', () => {
   test('人数 → 名前（表の読み込み・手入力） → ルール → 作成 → 共有 URL', async ({ page }) => {
@@ -561,6 +561,52 @@ test.describe('主催者', () => {
     await expect(cards.nth(1)).toContainText(upper);
     await expect(page.getByText('今の順位とずれています')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '決勝の卓割り（確定済み）' })).toBeVisible();
+  });
+
+  test('設定で大会名と開催日を直せる', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/admin/settings`);
+    await expect(page.getByLabel('大会名')).toHaveValue('E2E 大会');
+    await page.getByLabel('大会名').fill('第12回 岡田カップ（テスト）');
+    await page.getByLabel('開催日').fill('2026-11-01');
+    await page.getByRole('button', { name: '設定を保存' }).click();
+    await expect(page.locator('.toast.ok').last()).toContainText('設定を保存しました');
+    // 主催者トップの「これまでの大会」にも新しい名前で出る
+    await page.goto('/#/');
+    await expect(page.locator('.list-item').filter({ hasText: '第12回 岡田カップ（テスト）' })).toContainText('2026-11-01');
+  });
+
+  test('大会名を空にすると保存できない', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/admin/settings`);
+    await page.getByLabel('大会名').fill('  ');
+    await page.getByRole('button', { name: '設定を保存' }).click();
+    await expect(page.locator('.toast.error')).toHaveText('大会名を入れてください（例 第11回大会）');
+  });
+
+  test('大会名を入力すると大会を削除でき、まちがえた名前では消えない', async ({ page }) => {
+    const t = buildTournament();
+    await seed(page, { tournament: t, results: resultsFor(t, [1]), organizer: true, me: 'p1' });
+    await page.goto(`/#/t/${t.id}/admin/settings`);
+
+    // 名前がちがうと消えない
+    page.once('dialog', (dlg) => dlg.accept('ちがう名前'));
+    await page.getByRole('button', { name: 'この大会を削除' }).click();
+    await expect(page.locator('.toast.error')).toHaveText('大会名が一致しないため、削除しませんでした');
+
+    page.once('dialog', (dlg) => dlg.accept('E2E 大会'));
+    await page.getByRole('button', { name: 'この大会を削除' }).click();
+    await expect(page.locator('.toast.ok').last()).toHaveText('「E2E 大会」を削除しました');
+    // 主催者トップに戻り、一覧から消えている。結果もいっしょに消えている
+    await expect(page.locator('.list-item').filter({ hasText: 'E2E 大会' })).toHaveCount(0);
+    const left = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), DEMO_KEY);
+    expect(left.tournaments[t.id]).toBeUndefined();
+    expect(left.results[t.id]).toBeUndefined();
+    // 参加者に配った URL は開けない
+    await page.goto(`/#/t/${t.id}`);
+    await expect(page.getByText('大会が見つかりませんでした')).toBeVisible();
   });
 
   test('全回戦が終わると最終結果（決勝卓の着順）とポイントランキングが出る', async ({ page }) => {

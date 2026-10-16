@@ -205,6 +205,8 @@ function renderSettings(ctx) {
   if (!state.adminEdit || state.adminEdit.tid !== t.id || !state.adminEdit.dirty) {
     state.adminEdit = {
       tid: t.id,
+      name: t.name || '',
+      date: t.date || '',
       rules: { ...DEFAULT_RULES, ...t.rules, uma: [...(t.rules?.uma || DEFAULT_RULES.uma)] },
       sections: (t.ruleSections || []).map((s) => ({ ...s })),
       // 参加者が自分で直した名前も反映した名前を、編集の出発点にする
@@ -219,6 +221,8 @@ function renderSettings(ctx) {
 
   const save = async () => {
     const r = ed.rules;
+    const name = ed.name.trim();
+    if (!name) return toast('大会名を入れてください（例 第11回大会）', 'error');
     const problem = rulesProblem(r);
     if (problem) return toast(problem, 'error');
     // 結果が入ったあとに持ち点を変えると、入力済みの卓の合計と合わなくなる
@@ -231,6 +235,8 @@ function renderSettings(ctx) {
     if (dup) return toast(`「${dup}」が 2 人います。どちらかの名前を変えてください`, 'error');
     try {
       await store.updateTournament(t.id, {
+        name,
+        date: ed.date,
         rules: r,
         ruleSections: ed.sections.filter((s) => s.title.trim() || s.body.trim()),
         players: t.players.map((p, i) => ({ ...p, name: names[i] })),
@@ -250,12 +256,48 @@ function renderSettings(ctx) {
     h(
       'section',
       { class: 'card' },
+      h('h2', {}, '大会の情報'),
+      h('p', { class: 'muted' }, '大会名と開催日は、参加者の画面や「これまでの大会」の一覧に出ます'),
+      h('label', { class: 'field' }, h('span', {}, '大会名'),
+        h('input', { class: 'input', value: ed.name, 'aria-label': '大会名', onInput: (e) => { ed.name = e.target.value; markDirty(); } })),
+      h('label', { class: 'field' }, h('span', {}, '開催日'),
+        h('input', { class: 'input', type: 'date', value: ed.date, 'aria-label': '開催日', onInput: (e) => { ed.date = e.target.value; markDirty(); } })),
+    ),
+    h(
+      'section',
+      { class: 'card' },
       h('h2', {}, '参加者の名前'),
       h('p', { class: 'muted' }, '名前の表記を直せます（卓割りはそのまま）'),
       ed.names.map((n, i) => h('input', { class: 'input', value: n, onInput: (e) => { ed.names[i] = e.target.value; markDirty(); } })),
     ),
     h('section', { class: 'card' }, h('h2', {}, 'ルール'), rulesEditor(ed.rules, ed.sections, { onChange: markDirty, roundsLocked: true })),
+    deleteCard(ctx),
     h('div', { class: 'sticky-actions' }, h('button', { class: 'btn primary big', onClick: save }, '設定を保存')),
+  );
+}
+
+// 大会の削除。結果・チップもいっしょに消え、元に戻せないので、大会名を打ってもらってから消す
+function deleteCard(ctx) {
+  const { state, store } = ctx;
+  const t = state.t;
+  const remove = async () => {
+    const typed = window.prompt(`「${t.name}」を削除します。結果・チップもすべて消え、元に戻せません。\n削除するには、大会名をそのまま入力してください。`);
+    if (typed === null) return;
+    if (typed.trim() !== (t.name || '').trim()) return toast('大会名が一致しないため、削除しませんでした', 'error');
+    try {
+      await store.deleteTournament(t.id);
+      toast(`「${t.name}」を削除しました`, 'ok');
+      ctx.navigate('#/');
+    } catch (e) {
+      toast(`削除できませんでした。${errorText(e)}`, 'error');
+    }
+  };
+  return h(
+    'section',
+    { class: 'card' },
+    h('h2', {}, '大会の削除'),
+    h('p', { class: 'muted' }, 'テストで作った大会や、まちがえて作った大会を消せます。結果・チップもすべて消え、元に戻せません。参加者に配った URL も開けなくなります。'),
+    h('button', { type: 'button', class: 'btn danger', onClick: remove }, 'この大会を削除'),
   );
 }
 
