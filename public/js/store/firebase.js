@@ -74,6 +74,15 @@ export function createFirebaseStore(config) {
         () => cb(null),
       );
     },
+    // 大会を消す。中の結果・チップ・参加者が直した名前を先に消してから、大会そのものを消す
+    // （大会を先に消すと、権限ルールが大会の持ち主を確かめられなくなるため）
+    async deleteTournament(id) {
+      for (const sub of ['results', 'chips', 'names']) {
+        const snap = await getDocs(collection(db, 'tournaments', id, sub));
+        await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+      }
+      await deleteDoc(tRef(id));
+    },
     async listMyTournaments(uid) {
       const snap = await getDocs(query(collection(db, 'tournaments'), where('ownerUid', '==', uid)));
       return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt - a.createdAt);
