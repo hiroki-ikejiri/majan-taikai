@@ -7,6 +7,7 @@
 //   signInOrganizer() / signOut()
 //   createTournament(data) -> id
 //   updateTournament(id, patch)
+//   deleteTournament(id)                 結果・チップ・直した名前もいっしょに消す
 //   watchTournament(id, cb) -> unsubscribe
 //   listMyTournaments(uid) -> [{ id, ...data }]
 //   watchResults(id, cb) -> unsubscribe     cb([{ id, ...data }])

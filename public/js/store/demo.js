@@ -75,6 +75,13 @@ export function createDemoStore() {
     watchTournament(id, cb) {
       return watch(() => (db.tournaments[id] ? { id, ...clone(db.tournaments[id]) } : null), cb);
     },
+    async deleteTournament(id) {
+      delete db.tournaments[id];
+      delete db.results[id];
+      delete db.chips[id];
+      if (db.names) delete db.names[id];
+      save();
+    },
     async listMyTournaments(uid) {
       return Object.entries(db.tournaments)
         .filter(([, t]) => t.ownerUid === uid)
